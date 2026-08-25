@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# Local project config/state - contains API keys, must never be committed.
+.freecode/
+
+# Editors
+.vscode/
+.idea/
