@@ -1,0 +1,4 @@
+# FreeCode default configuration.
+# Placeholder (ph-00, Foundation) - the actual loader and full default
+# values (rate limits, token budget, approval policy, etc.) are added in
+# ph-02 (Configuration + logging).

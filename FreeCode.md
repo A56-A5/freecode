@@ -689,19 +689,26 @@ This makes failures local and keeps the project debuggable.
 
 ### 8.20 Git workflow
 
-Each phase should be completed as a small, reviewable unit.
+Each phase should be completed as a small, reviewable unit, on its own branch.
 
-Suggested branch pattern:
+Branch pattern (branch number = phase number, always two digits):
 
 ```text
 main
- ├── phase/01-tui
- ├── phase/02-config
- ├── phase/03-llm-client
- ├── phase/04-scheduler
- ├── phase/05-protocol
- ├── phase/06-agent
- └── ...
+ ├── ph-00   Foundation
+ ├── ph-01   TUI shell
+ ├── ph-02   Configuration + logging
+ ├── ph-03   ApiFreeLLM client
+ ├── ph-04   Scheduler + cooldown
+ ├── ph-05   Response protocol + repair
+ ├── ph-06   Agent Core
+ ├── ph-07   Tool system / MCP
+ ├── ph-08   Context Engine
+ ├── ph-09   Event system + coalescing
+ ├── ph-10   Persistence
+ ├── ph-11   Approval + security
+ ├── ph-12   Full integration
+ └── ph-13   Hardening + packaging
 ```
 
 Every completed phase should include:
@@ -714,6 +721,32 @@ Every completed phase should include:
 
 The project should be recoverable to the last known-good phase if a later
 integration introduces a regression.
+
+### 8.21 Phase status
+
+Kept current so anyone re-entering the project — human or LLM — can tell
+what's actually done vs. merely started, without re-reading every branch.
+
+| Branch | Phase | Status |
+|---|---|---|
+| ph-00 | Foundation | in progress |
+| ph-01 | TUI shell | not started |
+| ph-02 | Configuration + logging | not started |
+| ph-03 | ApiFreeLLM client | not started |
+| ph-04 | Scheduler + cooldown | not started |
+| ph-05 | Response protocol + repair | not started |
+| ph-06 | Agent Core | not started |
+| ph-07 | Tool system / MCP | not started |
+| ph-08 | Context Engine | not started |
+| ph-09 | Event system + coalescing | not started |
+| ph-10 | Persistence | not started |
+| ph-11 | Approval + security | not started |
+| ph-12 | Full integration | not started |
+| ph-13 | Hardening + packaging | not started |
+
+Status values: `not started` / `in progress` / `done, unverified` / `done, verified`.
+Use `done, verified` only after tests pass AND manual verification happened
+(automated where possible, on-device for anything touching the real API).
 
 ---
 

@@ -1,0 +1,30 @@
+[project]
+name = "freecode"
+version = "0.0.1"
+description = "Terminal-based, MCP-driven AI coding agent built on ApiFreeLLM's free tier."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = []
+# Real runtime deps (textual, httpx, aiosqlite, ...) are introduced phase by
+# phase, in the phase that actually needs them - not bulk-added up front.
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[project.scripts]
+freecode = "freecode.main:run"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
