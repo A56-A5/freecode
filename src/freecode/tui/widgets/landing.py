@@ -7,12 +7,11 @@ from textual.widgets import Static
 from freecode.tui.widgets.input import FreeCodeInput
 
 
-# KEEP YOUR EXISTING FREECODE_ASCII CONTENT HERE EXACTLY AS IT IS.
 FREECODE_ASCII = r"""
  ███████╗██████╗ ███████╗███████╗ ██████╗ █████╗ ██████╗ ███████╗
  ██╔════╝██╔══██╗██╔════╝██╔════╝██╔════╝██╔══██╗██╔══██╗██╔════╝
- █████╗  ██████╔╝█████╗  █████╗  ██║     ██║  ██║██║  ██║█████╗  
- ██╔══╝  ██╔══██╗██╔══╝  ██╔══╝  ██║     ██║  ██║██║  ██║██╔══╝  
+ █████╗  ██████╔╝█████╗  █████╗  ██║     ██║  ██║██║  ██║█████╗
+ ██╔══╝  ██╔══██╗██╔══╝  ██╔══╝  ██║     ██║  ██║██║  ██║██╔══╝
  ██║     ██║  ██║███████╗███████╗╚██████╗ █████╔╝██████╔╝███████╗
  ╚═╝     ╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝ ╚════╝ ╚═════╝ ╚══════╝
 """
@@ -56,22 +55,19 @@ class LandingScreen(Vertical):
     }
 
     #landing-input-row {
-    width: 1fr;
-    height: auto;
+        width: 1fr;
+        height: auto;
 
-    align: center middle;
-}
+        align: center middle;
+    }
 
-#landing-input {
-    width: 70%;
-    max-width: 80;
-    min-width: 30;
+    #landing-input {
+        width: 70%;
+        max-width: 80;
+        min-width: 30;
 
-    border: solid $panel;
-    background: $surface;
-}
-
-    #landing-input:focus {
+        border: solid $panel;
+        background: $surface;
     }
     """
 

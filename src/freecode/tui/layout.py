@@ -47,19 +47,19 @@ class MainLayout(Vertical):
         width: 1fr;
     }
 
-    #activity {
+    #activity-indicator {
         width: 1fr;
         height: auto;
         padding: 0 2;
     }
 
-    #cooldown {
+    #cooldown-bar {
         width: 1fr;
         height: auto;
         padding: 0 2;
     }
 
-    #footer {
+    #footer-stats {
         width: 1fr;
         height: auto;
         padding: 0 2 1 2;
@@ -82,9 +82,9 @@ class MainLayout(Vertical):
                 id="chat-input",
                 placeholder="Type a message...",
             ),
-            ActivityIndicator(id="activity"),
-            CooldownBar(id="cooldown"),
-            FooterStats(id="footer"),
+            ActivityIndicator(id="activity-indicator"),
+            CooldownBar(id="cooldown-bar"),
+            FooterStats(id="footer-stats"),
             id="composer",
         )
 
@@ -93,6 +93,10 @@ class MainLayout(Vertical):
         self.query_one("#conversation").display = False
         self.query_one("#composer").display = False
 
+        # Focus is deliberately owned by FreeCodeApp after the complete
+        # application tree has mounted.
+        self.query_one("#landing-input").focus()
+
     def start_conversation(self) -> None:
         """
         Switch from the landing screen to the normal conversation UI.
@@ -100,5 +104,4 @@ class MainLayout(Vertical):
         self.query_one("#landing").display = False
         self.query_one("#conversation").display = True
         self.query_one("#composer").display = True
-
         self.query_one("#chat-input", FreeCodeInput).focus()

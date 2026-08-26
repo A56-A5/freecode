@@ -8,9 +8,6 @@ Screen {
    ───────────────────────────────────────────────────────────── */
 
 #conversation {
-    width: 1fr;
-    height: 1fr;
-
     background: $background;
 }
 
@@ -19,15 +16,7 @@ Screen {
    Composer
    ───────────────────────────────────────────────────────────── */
 
-#composer {
-    width: 1fr;
-    height: auto;
-
-    padding: 0 2 1 2;
-}
-
 #chat-input {
-    width: 1fr;
     height: 3;
 
     border: solid $panel;
@@ -43,25 +32,16 @@ Screen {
    Activity / cooldown / footer
    ───────────────────────────────────────────────────────────── */
 
-#activity {
+#activity-indicator {
     width: 1fr;
-    height: auto;
-
-    padding: 0 1;
 }
 
-#cooldown {
+#cooldown-bar {
     width: 1fr;
-    height: auto;
-
-    padding: 0 1;
 }
 
-#footer {
+#footer-stats {
     width: 1fr;
-    height: auto;
-
-    padding: 0 1;
 }
 
 
@@ -70,8 +50,5 @@ Screen {
    ───────────────────────────────────────────────────────────── */
 
 #landing {
-    width: 1fr;
-    height: 1fr;
-
     background: $background;
 }
