@@ -16,6 +16,8 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.widgets import Input
 
+from freecode.tui.widgets.cooldown import CooldownBar
+
 from freecode.tui.layout import MainLayout
 from freecode.tui.panes.transcript import TranscriptPane
 from freecode.tui.theme import APP_TITLE, build_theme
@@ -56,6 +58,11 @@ class FreeCodeApp(App):
         #   conversation screen
         #
         layout.start_conversation()
+        
+        # ============================================================
+        # TEMPORARY TEST TIMER — REMOVE AFTER TESTING
+        # ============================================================
+        self.query_one("#cooldown", CooldownBar).start_test_timer(10.0)
 
         # Add the user's prompt.
         transcript.write_user_message(text)

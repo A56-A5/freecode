@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Vertical, Horizontal
 from textual.widgets import Static
 
 from freecode.tui.widgets.input import FreeCodeInput
@@ -11,8 +11,8 @@ from freecode.tui.widgets.input import FreeCodeInput
 FREECODE_ASCII = r"""
  ███████╗██████╗ ███████╗███████╗ ██████╗ █████╗ ██████╗ ███████╗
  ██╔════╝██╔══██╗██╔════╝██╔════╝██╔════╝██╔══██╗██╔══██╗██╔════╝
- █████╗  ██████╔╝█████╗  █████╗  ██║     ██║  ██║██║  ██║█████╗
- ██╔══╝  ██╔══██╗██╔══╝  ██╔══╝  ██║     ██║  ██║██║  ██║██╔══╝
+ █████╗  ██████╔╝█████╗  █████╗  ██║     ██║  ██║██║  ██║█████╗  
+ ██╔══╝  ██╔══██╗██╔══╝  ██╔══╝  ██║     ██║  ██║██║  ██║██╔══╝  
  ██║     ██║  ██║███████╗███████╗╚██████╗ █████╔╝██████╔╝███████╗
  ╚═╝     ╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝ ╚════╝ ╚═════╝ ╚══════╝
 """
@@ -55,17 +55,23 @@ class LandingScreen(Vertical):
         margin-bottom: 2;
     }
 
-    #landing-input {
-        width: 70%;
-        max-width: 80;
-        min-width: 30;
+    #landing-input-row {
+    width: 1fr;
+    height: auto;
 
-        border: solid $panel;
-        background: $surface;
-    }
+    align: center middle;
+}
+
+#landing-input {
+    width: 70%;
+    max-width: 80;
+    min-width: 30;
+
+    border: solid $panel;
+    background: $surface;
+}
 
     #landing-input:focus {
-        border: solid $accent;
     }
     """
 
@@ -75,9 +81,12 @@ class LandingScreen(Vertical):
                 FREECODE_ASCII,
                 id="freecode-ascii",
             ),
-            FreeCodeInput(
-                id="landing-input",
-                placeholder="Ask FreeCode anything...",
+            Horizontal(
+                FreeCodeInput(
+                    id="landing-input",
+                    placeholder="Ask FreeCode anything...",
+                ),
+                id="landing-input-row",
             ),
             id="landing-content",
         )

@@ -19,6 +19,8 @@ from rich.text import Text
 from textual.reactive import reactive
 from textual.widgets import Static
 
+from textual.widgets import Input
+
 BAR_WIDTH = 24
 FILLED_CHAR = "█"
 EMPTY_CHAR = "░"
@@ -79,3 +81,34 @@ class CooldownBar(Static):
         label = "backoff" if self.mode == "backoff" else "next request"
         text.append(f"  {self.remaining_seconds:4.1f}s · {label}", style="dim")
         return text
+
+        
+    # ============================================================
+    # TEMPORARY TEST TIMER — REMOVE AFTER TESTING
+    # The real Scheduler (ph-04) will control this widget later.
+    # ============================================================
+    
+    def start_test_timer(self, seconds: float = 10.0) -> None:
+        """Start a fake cooldown when testing the UI."""
+        # Stop an existing test timer if one is running.
+        if hasattr(self, "_test_timer"):
+            self._test_timer.stop()
+    
+        self.set_cooldown(seconds, seconds)
+    
+        self._test_timer = self.set_interval(
+            0.1,
+            self._test_tick,
+        )
+    
+    
+    def _test_tick(self) -> None:
+        """TEMPORARY: decrease the fake cooldown every 100ms."""
+        remaining = self.remaining_seconds - 0.1
+    
+        if remaining <= 0:
+            self.set_idle()
+            self._test_timer.stop()
+            return
+    
+        self.remaining_seconds = remaining
