@@ -7,7 +7,7 @@ from textual.widgets import Static
 from freecode.tui.widgets.input import FreeCodeInput
 
 
-
+# KEEP YOUR EXISTING FREECODE_ASCII CONTENT HERE EXACTLY AS IT IS.
 FREECODE_ASCII = r"""
  ███████╗██████╗ ███████╗███████╗ ██████╗ █████╗ ██████╗ ███████╗
  ██╔════╝██╔══██╗██╔════╝██╔════╝██╔════╝██╔══██╗██╔══██╗██╔════╝
@@ -23,35 +23,60 @@ class LandingScreen(Vertical):
     LandingScreen {
         width: 1fr;
         height: 1fr;
+
         align: center middle;
+
         background: $background;
     }
 
     #landing-content {
-        width: 90%;
+        width: 1fr;
         height: auto;
+
         align: center middle;
     }
 
     #freecode-ascii {
-        width: auto;
+        width: 1fr;
         height: auto;
-        color: $accent;
+
+        content-align: center middle;
+        text-align: center;
+
+        /*
+         * IMPORTANT:
+         * The logo is NOT the accent color.
+         * Keep the green for interactive/status elements.
+         */
+        color: $foreground;
+
         text-style: bold;
+
         margin-bottom: 2;
     }
 
     #landing-input {
-        width: 70;
-        max-width: 90%;
+        width: 70%;
+        max-width: 80;
+        min-width: 30;
+
+        border: solid $panel;
+        background: $surface;
+    }
+
+    #landing-input:focus {
+        border: solid $accent;
     }
     """
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            Static(FREECODE_ASCII, id="freecode-ascii"),
+            Static(
+                FREECODE_ASCII,
+                id="freecode-ascii",
+            ),
             FreeCodeInput(
-                id="chat-input",
+                id="landing-input",
                 placeholder="Ask FreeCode anything...",
             ),
             id="landing-content",

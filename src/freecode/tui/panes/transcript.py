@@ -1,63 +1,139 @@
 """
 tui.panes.transcript - the unified conversation stream.
+
+The transcript deliberately follows the visual language of terminal
+coding agents such as Claude Code and OpenCode:
+
+    › user prompt
+
+    ● assistant response
+
+User messages receive a subtle visual rail/background while assistant
+messages remain mostly plain text.
 """
 
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import Vertical
-from textual.widgets import RichLog
+from textual.containers import VerticalScroll
+from textual.widgets import Static
 
 
-class TranscriptPane(Vertical):
+class TranscriptPane(VerticalScroll):
     DEFAULT_CSS = """
     TranscriptPane {
         width: 1fr;
         height: 1fr;
-        background: $background;
-    }
-
-    #transcript-log {
-        width: 1fr;
-        height: 1fr;
 
         background: $background;
 
-        /* Textual defaults can make this look like a random blue scrollbar. */
         scrollbar-color: $accent;
         scrollbar-background: $background;
         scrollbar-corner-color: $background;
+    }
 
-        /* Don't reserve scrollbar space when it isn't needed. */
-        scrollbar-size-vertical: 1;
-        scrollbar-size-horizontal: 0;
+    .message {
+        width: 1fr;
+        height: auto;
+    }
+
+    .user-message {
+        width: 1fr;
+        height: auto;
+
+        margin: 1 1 1 1;
+        padding: 0 1;
+
+        background: $surface;
+        border-left: thick $accent;
+
+        color: $foreground;
+    }
+
+    .user-message-content {
+        width: 1fr;
+        height: auto;
+
+        color: $foreground;
+    }
+
+    .assistant-message {
+        width: 1fr;
+        height: auto;
+
+        margin: 1 1 2 1;
+        padding: 0 1;
+
+        background: $background;
+
+        color: $foreground;
+    }
+
+    .assistant-message-content {
+        width: 1fr;
+        height: auto;
+
+        color: $foreground;
+    }
+
+    .assistant-marker {
+        width: auto;
+        height: auto;
+
+        color: $foreground;
+        text-style: bold;
+    }
+
+    .user-marker {
+        width: auto;
+        height: auto;
+
+        color: $accent;
+        text-style: bold;
     }
     """
 
     def compose(self) -> ComposeResult:
-        yield RichLog(
-            id="transcript-log",
-            wrap=True,
-            markup=True,
-            highlight=False,
-            auto_scroll=True,
-        )
+        # The transcript starts empty.
+        #
+        # Messages are mounted dynamically by write_user_message() and
+        # write_agent_message().
+        yield from ()
 
     def write_user_message(self, text: str) -> None:
-        log = self.query_one("#transcript-log", RichLog)
-        log.write(f"[bold $accent]›[/bold $accent] {text}")
+        """
+        Render a user message with a subtle highlighted/railed treatment.
+        """
+
+        message = Static(
+            f"› {text}",
+            classes="message user-message",
+        )
+
+        self.mount(message)
+        self.scroll_end(animate=False)
 
     def write_agent_message(self, text: str) -> None:
-        log = self.query_one("#transcript-log", RichLog)
-        log.write(f"[bold $accent]●[/bold $accent] {text}")
+        """
+        Render an assistant response as plain flowing terminal text.
+        """
+
+        message = Static(
+            f"● {text}",
+            classes="message assistant-message",
+        )
+
+        self.mount(message)
+        self.scroll_end(animate=False)
 
     def write_mock_reply(self, prompt: str) -> None:
         """
         Temporary ph-01 fixture.
 
-        This intentionally does NOT pretend to be the future Agent Core.
-        It only gives us enough conversation content to exercise the TUI.
+        This exists only so the TUI can be visually tested before the
+        Agent Core is implemented.
         """
+
         prompt_lower = prompt.lower()
 
         if "hello" in prompt_lower or "hi" in prompt_lower:
@@ -93,7 +169,7 @@ class TranscriptPane(Vertical):
             reply = (
                 f"I received:\n\n"
                 f"  {prompt}\n\n"
-                "This is a mock FreeCode response for ph-01. "
+                "This is a mock FreeCode response for ph-01.\n\n"
                 "The real reasoning loop will eventually go through "
                 "the Agent Core, Prompt Compiler, Scheduler, and "
                 "ApiFreeLLM as described in FreeCode.md."

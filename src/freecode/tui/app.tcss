@@ -3,28 +3,33 @@ Screen {
     background: $background;
 }
 
-#transcript-pane {
-    height: 1fr;
-}
+/* ─────────────────────────────────────────────────────────────
+   Conversation
+   ───────────────────────────────────────────────────────────── */
 
-#transcript-log {
+#conversation {
+    width: 1fr;
     height: 1fr;
+
     background: $background;
-    padding: 0 1;
 }
 
-#divider {
-    color: $panel;
-}
 
-#activity-indicator {
-    height: 1;
-    padding: 0 1;
+/* ─────────────────────────────────────────────────────────────
+   Composer
+   ───────────────────────────────────────────────────────────── */
+
+#composer {
+    width: 1fr;
+    height: auto;
+
+    padding: 0 2 1 2;
 }
 
 #chat-input {
+    width: 1fr;
     height: 3;
-    margin: 0 1;
+
     border: solid $panel;
     background: $surface;
 }
@@ -33,12 +38,40 @@ Screen {
     border: solid $accent;
 }
 
-#cooldown-bar {
-    height: 1;
+
+/* ─────────────────────────────────────────────────────────────
+   Activity / cooldown / footer
+   ───────────────────────────────────────────────────────────── */
+
+#activity {
+    width: 1fr;
+    height: auto;
+
     padding: 0 1;
 }
 
-#footer-stats {
-    height: 1;
+#cooldown {
+    width: 1fr;
+    height: auto;
+
     padding: 0 1;
+}
+
+#footer {
+    width: 1fr;
+    height: auto;
+
+    padding: 0 1;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   Landing
+   ───────────────────────────────────────────────────────────── */
+
+#landing {
+    width: 1fr;
+    height: 1fr;
+
+    background: $background;
 }

@@ -1,3 +1,11 @@
+"""
+tui.layout - the main FreeCode TUI layout.
+
+The landing screen is shown initially. After the first submitted
+message, the landing screen is replaced by the normal conversation
+layout.
+"""
+
 from __future__ import annotations
 
 from textual.app import ComposeResult
@@ -59,13 +67,16 @@ class MainLayout(Vertical):
     """
 
     def compose(self) -> ComposeResult:
+        # Initial landing page.
         yield LandingScreen(id="landing")
 
+        # Normal conversation area.
         yield Vertical(
             TranscriptPane(id="transcript-pane"),
             id="conversation",
         )
 
+        # Bottom composer and status widgets.
         yield Vertical(
             FreeCodeInput(
                 id="chat-input",
@@ -78,10 +89,14 @@ class MainLayout(Vertical):
         )
 
     def on_mount(self) -> None:
+        # Start in landing mode.
         self.query_one("#conversation").display = False
         self.query_one("#composer").display = False
 
     def start_conversation(self) -> None:
+        """
+        Switch from the landing screen to the normal conversation UI.
+        """
         self.query_one("#landing").display = False
         self.query_one("#conversation").display = True
         self.query_one("#composer").display = True

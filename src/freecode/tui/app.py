@@ -8,6 +8,7 @@ activity indicator and cooldown bar are fully functional widgets but
 nothing drives them until the Scheduler (ph-04) and Agent Core (ph-06)
 exist.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -32,15 +33,40 @@ class FreeCodeApp(App):
         theme = build_theme()
         self.register_theme(theme)
         self.theme = theme.name
-        self.query_one("#chat-input").focus()
+
+        # The landing input is the only input visible at startup.
+        self.query_one("#landing-input").focus()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
+
         if not text:
             return
-        self.query_one("#transcript-pane", TranscriptPane).write_user_message(text)
+
+        layout = self.query_one(MainLayout)
+        transcript = self.query_one(
+            "#transcript-pane",
+            TranscriptPane,
+        )
+
+        # First submission transitions:
+        #
+        #   landing screen
+        #       ↓
+        #   conversation screen
+        #
+        layout.start_conversation()
+
+        # Add the user's prompt.
+        transcript.write_user_message(text)
+
+        # Clear the submitted input.
         event.input.value = ""
-        # TODO(ph-06): route this to Agent Core instead of just echoing it.
+
+        # Temporary ph-01 response.
+        #
+        # This will eventually be replaced by Agent Core output.
+        transcript.write_mock_reply(text)
 
 
 def run_tui() -> int:
