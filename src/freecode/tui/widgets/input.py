@@ -1,15 +1,35 @@
 """
-tui.widgets.input - the message input at the bottom of the screen.
-
-Thin wrapper around Textual's Input so later phases (history recall,
-slash-commands, approval-prompt mode) can extend it without touching the
-layout that composes it.
+tui.widgets.input - FreeCode's message composer.
 """
+
 from __future__ import annotations
 
 from textual.widgets import Input
 
 
 class FreeCodeInput(Input):
-    def __init__(self, *, placeholder: str = "Type a message...", **kwargs):
-        super().__init__(placeholder=placeholder, **kwargs)
+    DEFAULT_CSS = """
+    FreeCodeInput {
+        width: 1fr;
+        height: 3;
+        border: round $panel;
+        background: $surface;
+        color: $foreground;
+        padding: 0 1;
+    }
+
+    FreeCodeInput:focus {
+        border: round $accent;
+    }
+    """
+
+    def __init__(
+        self,
+        *,
+        placeholder: str = "Type a message...",
+        **kwargs,
+    ):
+        super().__init__(
+            placeholder=placeholder,
+            **kwargs,
+        )
