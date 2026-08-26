@@ -1,33 +1,33 @@
 """
 Phase 0 (Foundation) tests.
 
-Deliberately minimal: this phase's only job is "the project can be
-installed and launched through the package entry point." Later phases add
-their own test files under tests/unit/ - this file should stay small.
+Note: run() launches the real Textual app as of ph-01, so we can't call
+it directly in a test without blocking on an interactive event loop -
+instead we verify the wiring (run() calls tui.app.run_tui()) with a
+patch. TUI-specific behavior lives in tests/unit/test_tui.py.
 """
+from unittest.mock import patch
+
 from freecode import __version__
-from freecode.main import run
 
 
 def test_version_is_set():
     assert __version__ == "0.0.1"
 
 
-def test_run_returns_success_exit_code(capsys):
-    exit_code = run()
+def test_run_launches_the_tui():
+    with patch("freecode.tui.app.run_tui", return_value=0) as mock_run_tui:
+        from freecode.main import run
+
+        exit_code = run()
+
+    mock_run_tui.assert_called_once()
     assert exit_code == 0
-
-
-def test_run_prints_version_banner(capsys):
-    run()
-    captured = capsys.readouterr()
-    assert "freecode" in captured.out
-    assert __version__ in captured.out
 
 
 def test_domain_package_has_no_forbidden_imports():
     """
-    Guard rail for the dependency direction described in FreeCode.md §8.2:
+    Guard rail for the dependency direction described in FreeCode.md 8.2:
     domain/ must not depend on tui, llm, agent, tools, mcp, context,
     storage, or security.
     """

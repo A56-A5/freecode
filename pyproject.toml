@@ -5,9 +5,9 @@ description = "Terminal-based, MCP-driven AI coding agent built on ApiFreeLLM's 
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-dependencies = []
-# Real runtime deps (textual, httpx, aiosqlite, ...) are introduced phase by
-# phase, in the phase that actually needs them - not bulk-added up front.
+dependencies = [
+    "textual>=0.58",
+]
 
 [project.optional-dependencies]
 dev = [

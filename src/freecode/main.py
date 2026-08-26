@@ -1,23 +1,20 @@
 """
 FreeCode entry point.
 
-Phase 0 (Foundation): this just proves the package installs and the console
-script (`freecode`) is wired up correctly. It has no real behavior yet.
-
-Phase 1 (TUI shell) replaces the body of `run()` with launching the Textual
-app. Nothing outside this function should need to change when that happens -
-`run()` is the single entry point the console script calls.
+ph-00 (Foundation) proved the package installs and the console script
+works. ph-01 (TUI shell) replaces the placeholder body below with
+launching the real Textual app - the permanent layout and theme exist
+now, but nothing behind it (agent/LLM/scheduler/MCP) does yet; those
+land ph-03 through ph-07.
 """
 from __future__ import annotations
-
-from freecode import __version__
 
 
 def run() -> int:
     """Console-script entry point. Returns a process exit code."""
-    print(f"freecode {__version__} - foundation phase (ph-00)")
-    print("No TUI yet - that's ph-01. This just confirms the package works.")
-    return 0
+    from freecode.tui.app import run_tui
+
+    return run_tui()
 
 
 if __name__ == "__main__":

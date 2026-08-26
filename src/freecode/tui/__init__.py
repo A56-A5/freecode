@@ -1,4 +1,8 @@
 """
-tui/ - implemented in ph-01 (TUI shell). Empty placeholder for now (ph-00,
-Foundation) so the package structure and imports are stable from the start.
+tui/ - the Textual-based terminal interface.
+
+Single unified transcript design (no separate diff/commands panes),
+configurable theme (see theme.py + config/theme.toml), functional
+cooldown bar and activity indicator. See app.py for the App subclass,
+layout.py for the pane structure.
 """

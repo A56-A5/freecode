@@ -1,0 +1,17 @@
+# FreeCode theme override template.
+#
+# Copy this file to .freecode/theme.toml in your project and edit any
+# subset of these keys - unspecified keys fall back to FreeCode's defaults
+# (shown here). Colors are hex strings.
+
+[theme]
+primary = "#5f87ff"
+secondary = "#3a3a3a"
+accent = "#00d787"       # activity dot, cooldown bar fill
+success = "#00d787"
+warning = "#ffaf00"
+error = "#ff5f5f"
+background = "#0c0c0c"
+surface = "#131313"
+panel = "#1e1e1e"
+foreground = "#d4d4d4"
