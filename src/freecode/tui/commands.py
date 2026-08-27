@@ -26,6 +26,7 @@ HELP_TEXT = """\
 | Enter | New line in composer |
 | Ctrl+Enter | Send message |
 | Ctrl+E | Edit last prompt (load into composer) |
+| Ctrl+/ or type `/` | Open command palette |
 | Ctrl+X | Interrupt agent |
 | Ctrl+C | Quit |
 

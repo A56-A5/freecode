@@ -1,247 +1,52 @@
 # FreeCode
 
 Terminal-based, MCP-driven AI coding agent built entirely on
-[ApiFreeLLM](https://apifreellm.com)'s free tier (~1 request per 20-25s,
+[ApiFreeLLM](https://apifreellm.com)'s free tier (~1 request per 20–25s,
 no tool-calling, no streaming, 32k flat-string context).
 
-Full spec, architecture, phase plan, and status tracker: see
+Full spec, architecture, phase plan, and status tracker:
 [`FreeCode.md`](./FreeCode.md).
 
 ## Status
 
-Currently on `ph-13` (Hardening + packaging). Phases 00–12 are done, verified. See `FreeCode.md` §8.21 for
-the per-phase status table.
+**All phases ph-00 through ph-13 are done, verified.** See `FreeCode.md` §8.21.
 
-### Live chat (early integration)
-
-With `FREECODE_API_KEY` or `APIFREELLM_API_KEY` set, the TUI sends each
-message through Scheduler → ApiFreeLLM → repair and shows the model
-reply (plus cooldown/backoff on the bar). Without a key, mock replies
-from ph-01 still run so the UI stays usable offline.
-
-### ph-12 Full integration
-
-End-to-end path: TUI → AgentLoop → ContextEngine → Scheduler → ApiFreeLLM → repair → tools (with approval) → events/coalescer → persistence.
-
-### ph-11 Approval + security
-
-`ApprovalGate` classifies risk (readonly / write / git mutation / destructive)
-and returns allow / deny / prompt. TUI shows an Allow/Deny modal. Slash commands:
-`/help`, `/sessions`, `/session new`, `/session switch <id>`.
-
-### ph-10 Persistence
-
-SQLite stores for sessions (agent state, goals, history, pending actions),
-events, cooldown snapshots, and session metadata. Recoverable after restart.
-
-### ph-09 Event system + coalescing
-
-Domain events (`tool_result`, `file_changed`, …) and `EventCoalescer` batch activity during cooldown into the next ContextEngine prompt.
-
-### ph-08 Context Engine
-
-Indexes the project, ranks relevant files, compresses history, and
-assembles a budgeted flat prompt for ApiFreeLLM (`ContextEngine`).
-
-### ph-07 Tool system / MCP
-
-Local tools: filesystem (read/write/list/edit), shell, git helpers, search.
-`ToolExecutor` respects approval policy (`ask` / `auto_readonly` / `auto`).
-MCP package is a façade over the local executor for later server adapters.
-
-Landing + conversation both use the multi-line composer (Enter = newline,
-Ctrl+Enter = send).
-
-### ph-06 Agent Core
-
-Orchestrates goals, session state, LLM turns, and repaired responses.
-Does not run tools or render the TUI.
-
-```python
-from freecode.agent import AgentCore
-result = await core.handle_user_message("fix the bug")
-# result.message, result.phase, result.response.actions
-```
-
-Ctrl+X requests interrupt in the TUI. Pending actions are recorded for
-later tools/MCP phases.
-
-### ph-05 Response protocol + repair
-
-Turns raw model text into a structured `AgentResponse` without burning an
-extra LLM slot on parse failure.
-
-```python
-from freecode.llm import repair_response
-
-agent = repair_response(chat_response.text)
-# agent.message, agent.actions, agent.status, agent.context_update
-# agent.fallback is True when plain-text degrade path was used
-```
-
-Handles pure JSON, markdown fences, surrounding prose, malformed output,
-and safe plain-text fallback. Action types: `edit`, `command`.
-
-### ph-04 Scheduler + cooldown
-
-Independent rate-limit scheduler with a pluggable clock (real wall time or
-`FakeClock` for instant unit tests).
-
-* **cooldown** — after success, uses `max(floor, delaySeconds)` from the API
-* **backoff** — after 429/5xx, capped exponential backoff with jitter
-* **priority queue** — user > tool-result > continuation > background
-* Snapshot maps cleanly onto the existing TUI `CooldownBar` contract
-* **No automatic retries** — caller records outcomes and waits
-
-```python
-from freecode.llm import Scheduler, FakeClock, ApiFreeLLMClient
-
-sched = Scheduler(cfg.scheduler)
-await sched.wait_until_ready()
-resp = await client.send(msg)
-sched.record_success(resp.delay_seconds)
-# on 429:
-# sched.record_rate_limit(exc.retry_after_seconds)
-```
-
-### ph-03 ApiFreeLLM client
-
-Independent async HTTP client for `POST /api/v1/chat`. Transport only —
-no scheduler, no agent protocol parsing, no TUI.
-
-```python
-from freecode.config import load_config
-from freecode.llm import ApiFreeLLMClient
-
-cfg = load_config()
-async with ApiFreeLLMClient(cfg.llm) as client:
-    response = await client.send("hello")
-    print(response.text, response.delay_seconds)
-```
-
-* Request body: `{"message": "...", "model": "apifreellm"}`
-* Parses `success`, `response`, `tier`, `features.delaySeconds`
-* Maps 400/401/403/429/5xx to domain errors (`LLMAuthError`,
-  `LLMRateLimitError`, …) — **no automatic retries**
-* Auth via `Authorization: Bearer` from `FREECODE_API_KEY` /
-  `APIFREELLM_API_KEY`
-
-### ph-02 Configuration + logging
-
-Configuration is loaded from:
-
-1. Packaged defaults (`freecode/config/defaults.toml`)
-2. Optional project override: `.freecode/config.toml`
-3. Environment variables (credentials and a few operational knobs)
-
-Exposed settings include ApiFreeLLM endpoint/model, cooldown floor, token
-budget, approval policy, and project/runtime paths.
-
-**API keys are never read from TOML.** Set one of:
-
-```bash
-export FREECODE_API_KEY=...
-# or
-export APIFREELLM_API_KEY=...
-```
-
-Optional env overrides: `FREECODE_LOG_LEVEL`, `FREECODE_LLM_ENDPOINT`,
-`FREECODE_LLM_MODEL`, `FREECODE_CONFIG` (explicit path to config.toml).
-
-Structured logging is configured on startup under the `freecode` logger
-(text or JSON). File logging is optional via `[logging] to_file = true`.
-
-Example `.freecode/config.toml`:
-
-```toml
-[llm]
-timeout_seconds = 90
-
-[scheduler]
-cooldown_floor_seconds = 25
-
-[context]
-token_budget = 24000
-
-[approval]
-default_policy = "ask"   # ask | auto_readonly | auto
-
-[logging]
-level = "DEBUG"
-format = "text"
-to_file = false
-```
-
-### ph-01 TUI behavior
-
-The TUI remains a working mocked shell. It does not yet connect to
-ApiFreeLLM or an Agent Core.
-
-On launch, FreeCode shows the landing screen with the FreeCode ASCII logo
-and an input field. The landing input is focused initially.
-
-Submitting the first non-empty message transitions to the conversation
-layout and focuses the chat input. The submitted user message is added to
-the transcript, followed by a mock assistant response.
-
-The mock response is intentionally demo behavior for `ph-01`. It is selected
-from the submitted text:
-
-* messages containing `hello` or `hi` receive a greeting/test response
-* messages containing `help` receive a mock command-list response
-* messages containing `test` receive a longer mock UI-testing response
-* other messages receive a generic mock response
-
-Further messages remain in the same conversation and are appended to the
-transcript. The transcript automatically scrolls to the latest message.
-
-The activity indicator, cooldown bar, footer statistics, and configurable
-theme are implemented as TUI components. The cooldown widget exposes the
-interface that the future Scheduler will use, but the real Scheduler and
-API-driven cooldown behavior arrive in later phases.
-
+Stack: TUI → AgentLoop → ContextEngine → Scheduler → ApiFreeLLM → repair →
+tools (with approval) → events/coalescer → SQLite persistence.
 
 ## Install
 
 ```bash
-# From a clone
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
-export FREECODE_API_KEY="your-key"   # or APIFREELLM_API_KEY
-freecode
-```
-
-PyPI-style install (when published):
-
-```bash
-pip install freecode
+export FREECODE_API_KEY="your-key" # or APIFREELLM_API_KEY
 freecode
 ```
 
 Without an API key the TUI runs in **mock** mode (layout testing only).
 
+## Usage notes
+
+- **Composer:** Enter = newline, **Ctrl+Enter** = send
+- **Type `/`** to open the command palette (or use `/help`)
+- **Ctrl+E** / `/edit` — edit last prompt
+- **Ctrl+X** — interrupt agent
+- Sessions: `/sessions`, `/new`, `/session switch <id>`, `/session delete <id>`
+- Mutating tools prompt **Allow / Deny**
+
 ## Development
 
 ```bash
-pytest
-```
-
-See `FreeCode.md` for architecture and the phase status table (§8.21).
-
-
-## Development setup
-
-```bash
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 pytest
-freecode                          # runs the current TUI shell
+freecode
 ```
+
+Config: copy keys into `.freecode/config.toml` (never commit API keys).
+Theme: `.freecode/theme.toml`. State: `.freecode/state.db`.
 
 ## Branching
 
-One branch per phase, named `ph-NN` (e.g. `ph-00`, `ph-01`, ...). See
-`FreeCode.md` §8.20-8.21 for the full phase list and current status.
+One branch per phase (`ph-00` … `ph-13`). See `FreeCode.md` §8.20–8.21.

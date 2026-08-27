@@ -13,6 +13,7 @@ from textual import on
 from textual.binding import Binding
 from textual.message import Message
 from textual.widgets import Input, TextArea
+from freecode.tui.widgets.command_palette import CommandPalette
 
 
 class MessageSubmitted(Message):
@@ -69,6 +70,7 @@ class FreeCodeComposer(TextArea):
     BINDINGS = [
         Binding("ctrl+enter", "submit", "Send", priority=True, show=True),
         Binding("ctrl+j", "submit", "Send", priority=True, show=False),
+        Binding("ctrl+slash", "open_palette", "Commands", priority=True, show=True),
     ]
 
     DEFAULT_CSS = """
@@ -115,3 +117,20 @@ class FreeCodeComposer(TextArea):
             return
         self.post_message(MessageSubmitted(text))
         self.clear()
+
+    def action_open_palette(self) -> None:
+        self._show_palette(self.text.strip() or "/")
+
+    def on_key(self, event) -> None:  # type: ignore[no-untyped-def]
+        # Open palette when the buffer is exactly "/" after a keypress
+        if event.character == "/" and (not self.text or self.text == "/"):
+            self.call_after_refresh(self._show_palette, "/")
+
+    def _show_palette(self, prefix: str) -> None:
+        async def _run() -> None:
+            result = await self.app.push_screen_wait(CommandPalette(prefix=prefix))
+            if result:
+                self.text = result
+                self.focus()
+
+        self.app.run_worker(_run(), exclusive=False)
