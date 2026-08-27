@@ -15,7 +15,7 @@ from freecode.tui.panes.transcript import TranscriptPane
 from freecode.tui.widgets.activity import ActivityIndicator
 from freecode.tui.widgets.cooldown import CooldownBar
 from freecode.tui.widgets.footer_stats import FooterStats
-from freecode.tui.widgets.input import FreeCodeInput
+from freecode.tui.widgets.input import FreeCodeComposer, FreeCodeInput
 from freecode.tui.widgets.landing import LandingScreen
 
 
@@ -78,9 +78,8 @@ class MainLayout(Vertical):
 
         # Bottom composer and status widgets.
         yield Vertical(
-            FreeCodeInput(
+            FreeCodeComposer(
                 id="chat-input",
-                placeholder="Type a message...",
             ),
             ActivityIndicator(id="activity-indicator"),
             CooldownBar(id="cooldown-bar"),
@@ -104,4 +103,4 @@ class MainLayout(Vertical):
         self.query_one("#landing").display = False
         self.query_one("#conversation").display = True
         self.query_one("#composer").display = True
-        self.query_one("#chat-input", FreeCodeInput).focus()
+        self.query_one("#chat-input").focus()

@@ -17,7 +17,9 @@ Screen {
    ───────────────────────────────────────────────────────────── */
 
 #chat-input {
-    height: 3;
+    height: auto;
+    min-height: 3;
+    max-height: 8q;
 
     border: solid $panel;
     background: $surface;

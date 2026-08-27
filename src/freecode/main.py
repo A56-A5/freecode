@@ -2,9 +2,10 @@
 FreeCode entry point.
 
 ph-00 Foundation: package installs, console script works.
-ph-01 TUI shell: launches the mocked Textual app.
-ph-02 Configuration + logging: load config and set up structured logging
-before the TUI starts. Agent/LLM/scheduler/MCP still land in later phases.
+ph-01 TUI shell: launches the Textual app.
+ph-02 Configuration + logging.
+ph-03..05: client, scheduler, repair — TUI can use live ApiFreeLLM when
+FREECODE_API_KEY / APIFREELLM_API_KEY is set; otherwise mock replies.
 """
 from __future__ import annotations
 
@@ -26,13 +27,13 @@ def run() -> int:
         config.approval.default_policy,
     )
     if config.llm.api_key:
-        log.debug("API key present (from environment)")
+        log.info("live ApiFreeLLM mode (API key present)")
     else:
-        log.debug("no API key in environment (not required until ph-03)")
+        log.info("mock TUI mode (set FREECODE_API_KEY for live replies)")
 
     from freecode.tui.app import run_tui
 
-    return run_tui()
+    return run_tui(config)
 
 
 if __name__ == "__main__":
