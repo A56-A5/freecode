@@ -33,6 +33,7 @@ from freecode.config.settings import (
 # Environment variable names.
 ENV_API_KEY = "FREECODE_API_KEY"
 ENV_API_KEY_ALT = "APIFREELLM_API_KEY"
+ENV_API_KEY_PREFIX = "FREECODE_API_KEY_"
 ENV_LOG_LEVEL = "FREECODE_LOG_LEVEL"
 ENV_ENDPOINT = "FREECODE_LLM_ENDPOINT"
 ENV_MODEL = "FREECODE_LLM_MODEL"
@@ -183,14 +184,35 @@ def _log_format(value: Any, *, default: LogFormat) -> LogFormat:
         )
     return value  # type: ignore[return-value]
 
+def _api_keys_from_env(environ: Mapping[str, str]) -> tuple[str, ...]:
+    keys: list[str] = []
 
-def _api_key_from_env(environ: Mapping[str, str]) -> str | None:
-    for name in (ENV_API_KEY, ENV_API_KEY_ALT):
+    # New multi-key format:
+    # FREECODE_API_KEY_1
+    # FREECODE_API_KEY_2
+    # FREECODE_API_KEY_3
+    # ...
+    index = 1
+    while True:
+        name = f"{ENV_API_KEY_PREFIX}{index}"
         raw = environ.get(name, "").strip()
-        if raw:
-            return raw
-    return None
 
+        if not raw:
+            # Stop at the first missing key.
+            break
+
+        keys.append(raw)
+        index += 1
+
+    # Backwards compatibility.
+    if not keys:
+        for name in (ENV_API_KEY, ENV_API_KEY_ALT):
+            raw = environ.get(name, "").strip()
+            if raw:
+                keys.append(raw)
+                break
+
+    return tuple(keys)
 
 def apply_env_overrides(
     data: dict[str, Any],
@@ -225,7 +247,12 @@ def apply_env_overrides(
     return merged
 
 
-def build_config(data: Mapping[str, Any], *, api_key: str | None = None) -> Config:
+def build_config(
+    data: Mapping[str, Any],
+    *,
+    api_key: str | None = None,
+    api_keys: tuple[str, ...] = (),
+) -> Config:
     """Map a merged dict into the typed Config model."""
     # Instance defaults — slotted dataclasses do not expose field defaults
     # as usable class attributes.
@@ -260,6 +287,7 @@ def build_config(data: Mapping[str, Any], *, api_key: str | None = None) -> Conf
             default=llm_d.timeout_seconds,
         ),
         api_key=api_key,
+        api_keys=api_keys or ((api_key,) if api_key else ()),
     )
 
     scheduler = SchedulerSettings(
@@ -395,8 +423,13 @@ def load_config(
         paths["project_dir"] = str(root)
     merged["paths"] = paths
 
-    api_key = _api_key_from_env(env)
-    config = build_config(merged, api_key=api_key)
+    api_keys = _api_keys_from_env(env)
+
+    config = build_config(
+        merged,
+        api_key=api_keys[0] if api_keys else None,
+        api_keys=api_keys,
+    )
     if resolve:
         config = config.resolve_paths(root)
     return config

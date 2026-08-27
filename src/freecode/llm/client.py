@@ -83,12 +83,24 @@ class ApiFreeLLMClient:
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         s = settings or LLMSettings()
+
         self._endpoint = endpoint if endpoint is not None else s.endpoint
         self._model = model if model is not None else s.model
-        self._api_key = api_key if api_key is not None else s.api_key
         self._timeout = (
             timeout_seconds if timeout_seconds is not None else s.timeout_seconds
         )
+
+        self._api_keys = (
+            s.api_keys
+            if s.api_keys
+            else ((api_key if api_key is not None else s.api_key),)
+        )
+
+        self._api_keys = tuple(k for k in self._api_keys if k)
+
+        self._key_index = 0
+        self._exhausted_keys: set[int] = set()
+
         self._transport = transport
         self._client: httpx.AsyncClient | None = None
 
@@ -117,15 +129,17 @@ class ApiFreeLLMClient:
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             }
-            if self._api_key:
-                headers["Authorization"] = f"Bearer {self._api_key}"
+
             kwargs: dict[str, Any] = {
                 "timeout": httpx.Timeout(self._timeout),
                 "headers": headers,
             }
+
             if self._transport is not None:
                 kwargs["transport"] = self._transport
+
             self._client = httpx.AsyncClient(**kwargs)
+
         return self._client
 
     async def aclose(self) -> None:
@@ -154,40 +168,88 @@ class ApiFreeLLMClient:
     async def send_request(self, request: ChatRequest) -> ChatResponse:
         client = await self._ensure_client()
         body = request.to_body()
-        log.debug(
-            "POST %s model=%s message_chars=%d",
-            self._endpoint,
-            request.model,
-            len(request.message),
-        )
-        last_exc: Exception | None = None
-        for attempt in range(2):
-            try:
-                response = await client.post(self._endpoint, json=body)
+
+        if not self._api_keys:
+            raise LLMAuthError(
+                "No ApiFreeLLM API key configured.",
+                status_code=401,
+            )
+
+        attempted_keys: set[int] = set()
+
+        while len(attempted_keys) < len(self._api_keys):
+            key_index = self._key_index
+
+            if key_index in self._exhausted_keys:
+                if not self._rotate_key():
+                    break
+                key_index = self._key_index
+
+            if key_index in attempted_keys:
                 break
-            except httpx.TimeoutException as exc:
-                last_exc = exc
-                log.warning(
-                    "ApiFreeLLM timeout after %.0fs (attempt %d/2)",
-                    self._timeout,
-                    attempt + 1,
+
+            attempted_keys.add(key_index)
+
+            api_key = self._api_keys[key_index]
+
+            log.debug(
+                "POST %s model=%s message_chars=%d api_key=%d/%d",
+                self._endpoint,
+                request.model,
+                len(request.message),
+                key_index + 1,
+                len(self._api_keys),
+            )
+
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            }
+
+            try:
+                response = await client.post(
+                    self._endpoint,
+                    json=body,
+                    headers=headers,
                 )
-                if attempt == 0:
-                    continue
+            except httpx.TimeoutException as exc:
                 raise LLMTransportError(
-                    f"Request timed out after {self._timeout:.0f}s "
-                    f"(free-tier community limit — try a shorter ask, then retry)."
+                    f"Request timed out after {self._timeout:.0f}s"
                 ) from exc
             except httpx.RequestError as exc:
                 raise LLMTransportError(
                     f"ApiFreeLLM transport error: {exc}"
                 ) from exc
-        else:
-            raise LLMTransportError(
-                f"Request timed out after {self._timeout:.0f}s"
-            ) from last_exc
 
-        return self._map_response(response)
+            if response.status_code != 429:
+                return self._map_response(response)
+
+            message = _error_message(response)
+
+            if not _is_daily_quota_error(message):
+                # Normal 429 → let Scheduler deal with it.
+                return self._map_response(response)
+
+            # This particular key has hit its daily quota.
+            self._exhausted_keys.add(key_index)
+
+            log.warning(
+                "ApiFreeLLM key %d/%d reached daily community quota",
+                key_index + 1,
+                len(self._api_keys),
+            )
+
+            if not self._rotate_key():
+                # Every key is exhausted.
+                return self._map_response(response)
+
+        raise LLMRateLimitError(
+            "All configured ApiFreeLLM API keys have reached their daily "
+            "Community request limit.",
+            status_code=429,
+            retry_after_seconds=None,
+        )
 
     def _map_response(self, response: httpx.Response) -> ChatResponse:
         status = response.status_code
@@ -247,3 +309,49 @@ class ApiFreeLLMClient:
             parsed.tier,
         )
         return parsed
+
+    @property
+    def api_key_count(self) -> int:
+        return len(self._api_keys)
+
+
+    @property
+    def current_key_index(self) -> int:
+        return self._key_index
+
+
+    def _current_api_key(self) -> str | None:
+        if not self._api_keys:
+            return None
+
+        if self._key_index in self._exhausted_keys:
+            self._rotate_key()
+
+        if self._key_index >= len(self._api_keys):
+            return None
+
+        return self._api_keys[self._key_index]
+
+
+    def _rotate_key(self) -> bool:
+        if not self._api_keys:
+            return False
+
+        start = self._key_index
+
+        for offset in range(1, len(self._api_keys) + 1):
+            index = (start + offset) % len(self._api_keys)
+
+            if index not in self._exhausted_keys:
+                old_index = self._key_index
+                self._key_index = index
+
+                log.warning(
+                    "ApiFreeLLM API key exhausted: switching key %d -> %d",
+                    old_index + 1,
+                    index + 1,
+                )
+
+                return True
+
+        return False

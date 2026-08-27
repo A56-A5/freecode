@@ -20,8 +20,12 @@ class LLMSettings:
     endpoint: str = "https://apifreellm.com/api/v1/chat"
     model: str = "apifreellm"
     timeout_seconds: float = 120.0
-    # Populated from FREECODE_API_KEY / APIFREELLM_API_KEY only — never from TOML.
+
+    # Backwards-compatible single key.
     api_key: str | None = None
+
+    # Multiple API keys, populated only from environment variables.
+    api_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
