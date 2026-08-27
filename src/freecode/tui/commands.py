@@ -32,10 +32,12 @@ HELP_TEXT = """\
 | `/help` | Show this help |
 | `/sessions` | List saved sessions |
 | `/session new [title]` | Create & switch to a new session |
+| `/new` | Same as `/session new` (fresh chat, no old memory) |
 | `/session switch <id>` | Switch to an existing session |
 | `/session` | Show active session id |
 
-Sessions are stored in SQLite under `.freecode/state.db`.
+Each app launch starts a **fresh** session. Old chats stay in `/sessions`.
+Sessions are stored under `.freecode/state.db`.
 Mutating tools (edits, shell, git writes) prompt **Allow / Deny**.
 """
 
@@ -52,6 +54,9 @@ def try_handle_slash(app: FreeCodeApp, text: str) -> CommandResult:
 
     if cmd in ("/help", "/?"):
         return CommandResult(handled=True, message=HELP_TEXT)
+
+    if cmd in ("/new", "/clear"):
+        return _cmd_session_new(app, "")
 
     if cmd == "/sessions":
         return _cmd_sessions(app)

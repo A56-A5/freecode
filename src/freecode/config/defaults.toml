@@ -9,7 +9,7 @@
 endpoint = "https://apifreellm.com/api/v1/chat"
 model = "apifreellm"
 # Request timeout in seconds (network only; cooldown is separate).
-timeout_seconds = 60.0
+timeout_seconds = 120.0
 
 [scheduler]
 # Hard floor for normal cooldown. Live `delaySeconds` from the API is

@@ -67,9 +67,11 @@ def default_prompt(state: AgentState, user_text: str) -> str:
         parts.append("Recent conversation:\n" + "\n".join(lines))
     parts.append(f"User: {user_text}")
     parts.append(
-        "Respond helpfully. When possible, reply with JSON only of the form "
+        "Respond helpfully as JSON only: "
         '{"message":"...","actions":[],"status":"continue|done|needs_input",'
-        '"context_update":{"facts":[]}}.'
+        '"context_update":{"facts":[]}}. '
+        "Put FULL answers and complete code in message (markdown fences). "
+        "Never omit code you claim to provide. Do not invent file paths."
     )
     return "\n\n".join(parts)
 

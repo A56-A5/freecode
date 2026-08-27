@@ -73,6 +73,8 @@ class FreeCodeApp(App):
         sid = self._session_store.create(title=title, state=state)
         self._session_id = sid
         self._agent = self._build_agent(state)
+        self._reset_transcript_ui()
+        self._sync_footer()
         return sid
 
     def switch_session(self, session_id: str) -> bool:
@@ -84,6 +86,18 @@ class FreeCodeApp(App):
         self._session_id = session_id
         self._session_store.set_meta("active_session_id", session_id)
         self._agent = self._build_agent(state)
+        self._reset_transcript_ui()
+        # Replay short history into the transcript so the user sees context
+        try:
+            transcript = self.query_one("#transcript-pane", TranscriptPane)
+            for turn in state.history[-12:]:
+                if turn.role == "user":
+                    transcript.write_user_message(turn.content)
+                else:
+                    transcript.write_agent_message(turn.content)
+        except Exception:
+            pass
+        self._sync_footer()
         return True
 
     def compose(self) -> ComposeResult:
@@ -101,15 +115,12 @@ class FreeCodeApp(App):
         self._event_store = EventStore(db)
         self._cooldown_store = CooldownStore(db)
 
-        active = self._session_store.active_session_id()
-        state = self._session_store.load_state(active) if active else None
-        if active and state is not None:
-            self._session_id = active
-        else:
-            self._session_id = self._session_store.create(title="default")
-            state = AgentState()
-
+        # Fresh session each launch so prior chats do not leak into context.
+        # Resume via: /sessions then /session switch <id>
+        state = AgentState()
+        self._session_id = self._session_store.create(title="session", state=state)
         self._agent = self._build_agent(state)
+        self._sync_footer()
 
     def on_unmount(self) -> None:
         self._persist_current()
@@ -390,6 +401,27 @@ class FreeCodeApp(App):
             bar.set_backoff(snap.total_seconds, snap.remaining_seconds)
         else:
             bar.set_idle()
+
+
+    def _reset_transcript_ui(self) -> None:
+        try:
+            layout = self.query_one(MainLayout)
+            transcript = self.query_one("#transcript-pane", TranscriptPane)
+            transcript.clear()
+            layout.start_conversation()
+        except Exception:
+            pass
+
+    def _sync_footer(self) -> None:
+        try:
+            from freecode.tui.widgets.footer_stats import FooterStats
+
+            footer = self.query_one("#footer-stats", FooterStats)
+            sid = self._session_id or ""
+            short = sid[:8] if sid else ""
+            footer.set_stats(session_label=short)
+        except Exception:
+            pass
 
 
 def run_tui(config: Config | None = None) -> int:

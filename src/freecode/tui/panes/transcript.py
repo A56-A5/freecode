@@ -96,6 +96,11 @@ class TranscriptPane(VerticalScroll):
     def compose(self) -> ComposeResult:
         yield from ()
 
+    def clear(self) -> None:
+        """Remove all messages (used on session switch)."""
+        for child in list(self.children):
+            child.remove()
+
     def write_user_message(self, text: str) -> None:
         """Render a user message with a left accent rail."""
         text = (text or "").rstrip()

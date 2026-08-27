@@ -19,7 +19,7 @@ LogFormat = Literal["text", "json"]
 class LLMSettings:
     endpoint: str = "https://apifreellm.com/api/v1/chat"
     model: str = "apifreellm"
-    timeout_seconds: float = 60.0
+    timeout_seconds: float = 120.0
     # Populated from FREECODE_API_KEY / APIFREELLM_API_KEY only — never from TOML.
     api_key: str | None = None
 

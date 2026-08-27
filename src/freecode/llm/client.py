@@ -160,16 +160,32 @@ class ApiFreeLLMClient:
             request.model,
             len(request.message),
         )
-        try:
-            response = await client.post(self._endpoint, json=body)
-        except httpx.TimeoutException as exc:
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                response = await client.post(self._endpoint, json=body)
+                break
+            except httpx.TimeoutException as exc:
+                last_exc = exc
+                log.warning(
+                    "ApiFreeLLM timeout after %.0fs (attempt %d/2)",
+                    self._timeout,
+                    attempt + 1,
+                )
+                if attempt == 0:
+                    continue
+                raise LLMTransportError(
+                    f"Request timed out after {self._timeout:.0f}s "
+                    f"(free-tier community limit — try a shorter ask, then retry)."
+                ) from exc
+            except httpx.RequestError as exc:
+                raise LLMTransportError(
+                    f"ApiFreeLLM transport error: {exc}"
+                ) from exc
+        else:
             raise LLMTransportError(
-                f"ApiFreeLLM request timed out after {self._timeout}s"
-            ) from exc
-        except httpx.RequestError as exc:
-            raise LLMTransportError(
-                f"ApiFreeLLM transport error: {exc}"
-            ) from exc
+                f"Request timed out after {self._timeout:.0f}s"
+            ) from last_exc
 
         return self._map_response(response)
 
@@ -215,6 +231,13 @@ class ApiFreeLLMClient:
             err = data.get("error") or data.get("message") or "success=false"
             if not isinstance(err, str):
                 err = str(err)
+            low = err.lower()
+            if "timed out" in low or "timeout" in low or "community" in low:
+                raise LLMTransportError(
+                    f"{err} — free-tier community requests can time out on long "
+                    f"generations; try a shorter prompt or wait for cooldown and retry.",
+                    status_code=200,
+                )
             raise LLMResponseError(err, status_code=200)
         parsed = ChatResponse.from_mapping(data)
         log.debug(

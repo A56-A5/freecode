@@ -145,12 +145,14 @@ class TestRepairResponse:
         assert resp.actions == ()
         assert resp.status == "continue"
 
-    def test_malformed_json_falls_back(self):
+    def test_malformed_json_recovers_message(self):
         resp = repair_response('{"message": "oops", "status": ')
-        assert resp.fallback is True
+        # Prefer recovered message over dumping raw JSON
+        assert "oops" in resp.message
+        assert not resp.message.strip().startswith("{")
 
-    def test_invalid_action_falls_back_or_skips_bad_candidate(self):
-        # Valid-looking JSON but bad action type -> fallback
+    def test_invalid_action_still_recovers_message(self):
+        # Bad action type: keep the human message, drop actions
         text = json.dumps(
             {
                 "message": "x",
@@ -159,7 +161,8 @@ class TestRepairResponse:
             }
         )
         resp = repair_response(text)
-        assert resp.fallback is True
+        assert resp.message == "x"
+        assert not resp.message.strip().startswith("{")
 
     def test_empty_string(self):
         resp = repair_response("")
@@ -183,3 +186,36 @@ class TestRepairResponse:
         resp = repair_response("not json at all {{{")
         assert isinstance(resp, AgentResponse)
         assert resp.fallback is True
+
+
+class TestBrokenJsonRecovery:
+    def test_recover_message_from_unescaped_newlines(self):
+        # Model wrote real newlines inside the JSON string (invalid JSON)
+        text = """{
+  "message": "Line one
+Line two
+Line three",
+  "actions": [],
+  "status": "continue"
+}"""
+        resp = repair_response(text)
+        assert "Line one" in resp.message
+        assert "Line two" in resp.message
+        assert not resp.message.strip().startswith("{")
+
+    def test_recover_from_truncated_json(self):
+        text = '{"message": "Hello there friend", "status": "cont'
+        resp = repair_response(text)
+        assert "Hello there" in resp.message
+        assert not resp.message.strip().startswith("{")
+
+    def test_valid_long_message_still_parses(self):
+        import json
+        payload = {
+            "message": "A" * 500 + "\n\n" + "B" * 100,
+            "actions": [],
+            "status": "done",
+        }
+        resp = repair_response(json.dumps(payload))
+        assert resp.status == "done"
+        assert resp.message.startswith("A")

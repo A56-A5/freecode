@@ -3,10 +3,11 @@ llm.repair - extract and validate structured agent JSON from model text.
 
 Pipeline:
   raw text -> JSON extraction -> strict parse -> validation -> AgentResponse
-           on any failure -> plain-text fallback (no extra LLM call)
+           on failure -> recover "message" field from broken JSON
+           on total failure -> plain-text fallback (no extra LLM call)
 
-Handles: pure JSON, markdown fences, leading/trailing prose, truncated
-braces (best-effort), and total garbage (fallback).
+Handles: pure JSON, markdown fences, prose wrappers, truncated braces,
+unescaped newlines inside JSON strings (common on long free-tier replies).
 """
 from __future__ import annotations
 
@@ -24,14 +25,11 @@ _FENCE_RE = re.compile(
     re.DOTALL,
 )
 
+# Recover a JSON string value for "message" even when the rest is broken.
+_MESSAGE_KEY_RE = re.compile(r'"message"\s*:\s*"', re.DOTALL)
+
 
 def extract_json_candidates(text: str) -> list[str]:
-    """
-    Ordered candidate strings that might be the structured payload.
-
-    Preference: fenced blocks first, then the whole text, then the first
-    balanced {...} slice found in the text.
-    """
     if not text or not text.strip():
         return []
 
@@ -54,11 +52,15 @@ def extract_json_candidates(text: str) -> list[str]:
     if brace_slice is not None:
         _add(brace_slice)
 
+    # Attempt to close truncated objects (long replies cut mid-JSON)
+    if stripped.startswith("{") and not stripped.endswith("}"):
+        for suffix in ('"}', '"], "status": "continue"}', '"status": "continue"}', "}"):
+            _add(stripped + suffix)
+
     return candidates
 
 
 def _first_balanced_object(text: str) -> str | None:
-    """Return the first top-level {...} substring, or None."""
     start = text.find("{")
     if start < 0:
         return None
@@ -90,27 +92,137 @@ def _try_load(candidate: str) -> dict[str, Any] | None:
     try:
         data = json.loads(candidate)
     except json.JSONDecodeError:
-        return None
+        # Try raw_decode from first brace
+        try:
+            start = candidate.find("{")
+            if start < 0:
+                return None
+            data, _ = json.JSONDecoder().raw_decode(candidate[start:])
+        except json.JSONDecodeError:
+            return None
     if isinstance(data, dict):
         return data
     return None
 
 
 def _looks_like_agent_payload(data: dict[str, Any]) -> bool:
-    """
-    Heuristic: accept dicts that carry at least one contract key so we
-    do not treat arbitrary JSON blobs as a full agent turn.
-    """
     keys = set(data.keys())
     contract = {"message", "actions", "status", "context_update"}
     return bool(keys & contract)
+
+
+def _unescape_json_string(body: str) -> str:
+    """Interpret JSON string escape sequences in an extracted fragment."""
+    out: list[str] = []
+    i = 0
+    while i < len(body):
+        ch = body[i]
+        if ch == "\\" and i + 1 < len(body):
+            nxt = body[i + 1]
+            if nxt == "n":
+                out.append("\n")
+            elif nxt == "t":
+                out.append("\t")
+            elif nxt == "r":
+                out.append("\r")
+            elif nxt == '"':
+                out.append('"')
+            elif nxt == "\\":
+                out.append("\\")
+            elif nxt == "/":
+                out.append("/")
+            elif nxt == "u" and i + 5 < len(body):
+                try:
+                    out.append(chr(int(body[i + 2 : i + 6], 16)))
+                    i += 6
+                    continue
+                except ValueError:
+                    out.append(nxt)
+            else:
+                out.append(nxt)
+            i += 2
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def extract_message_field(text: str) -> str | None:
+    """
+    Best-effort pull of the agent `message` string from messy model output.
+
+    Handles:
+    - valid JSON (via loads)
+    - truncated JSON
+    - unescaped raw newlines inside the message value (invalid JSON)
+    """
+    if not text:
+        return None
+
+    # Fast path: valid JSON
+    data = _try_load(text.strip())
+    if data and isinstance(data.get("message"), str):
+        return data["message"]
+
+    # Scan for "message": " ... "
+    m = _MESSAGE_KEY_RE.search(text)
+    if not m:
+        return None
+
+    i = m.end()
+    # If the model put a real newline right after the opening quote and
+    # continued without escaping, read until a line that looks like the
+    # next JSON key or closing brace.
+    raw_chars: list[str] = []
+    escape = False
+    while i < len(text):
+        ch = text[i]
+        if escape:
+            raw_chars.append("\\")
+            raw_chars.append(ch)
+            escape = False
+            i += 1
+            continue
+        if ch == "\\":
+            escape = True
+            i += 1
+            continue
+        if ch == '"':
+            # End of string — unless this is invalid JSON with internal quotes
+            # Peek: if next non-ws is : or , or } treat as end
+            j = i + 1
+            while j < len(text) and text[j] in " \t\r\n":
+                j += 1
+            if j >= len(text) or text[j] in ",}":
+                break
+            # Otherwise include the quote as content (broken JSON)
+            raw_chars.append(ch)
+            i += 1
+            continue
+        # Unescaped control newline inside string → keep as real newline
+        raw_chars.append(ch)
+        i += 1
+
+    if not raw_chars:
+        return None
+    return _unescape_json_string("".join(raw_chars)).strip()
+
+
+def _normalize_message(msg: str) -> str:
+    # If the whole message still looks like a JSON wrapper, peel it.
+    stripped = msg.strip()
+    if stripped.startswith("{") and '"message"' in stripped:
+        inner = extract_message_field(stripped)
+        if inner and inner != msg:
+            return inner
+    return msg
 
 
 def repair_response(text: str) -> AgentResponse:
     """
     Turn raw model text into an AgentResponse.
 
-    Never raises for ordinary bad model output — degrades to plain text.
+    Never raises for ordinary bad model output — degrades gracefully.
     Does not call the LLM again.
     """
     if text is None:
@@ -129,6 +241,16 @@ def repair_response(text: str) -> AgentResponse:
             continue
         try:
             parsed = AgentResponse.from_mapping(data, raw_text=text)
+            msg = _normalize_message(parsed.message)
+            if msg != parsed.message:
+                parsed = AgentResponse(
+                    message=msg,
+                    actions=parsed.actions,
+                    context_update=parsed.context_update,
+                    status=parsed.status,
+                    fallback=False,
+                    raw_text=text,
+                )
             log.debug(
                 "repaired structured response actions=%d status=%s",
                 len(parsed.actions),
@@ -140,14 +262,38 @@ def repair_response(text: str) -> AgentResponse:
             log.debug("candidate failed validation: %s", exc)
             continue
 
+    # Recover message from broken / truncated JSON before plain fallback
+    recovered = extract_message_field(text)
+    if recovered:
+        log.debug("recovered message field from broken JSON (%d chars)", len(recovered))
+        return AgentResponse(
+            message=_normalize_message(recovered),
+            actions=(),
+            status="continue",
+            fallback=False,
+            raw_text=text,
+        )
+
     if last_error is not None:
         log.debug("falling back to plain text after validation errors: %s", last_error)
     else:
         log.debug("falling back to plain text (no JSON candidates)")
 
+    # Avoid showing raw JSON blob as the user-visible reply when possible
+    stripped = text.strip()
+    if stripped.startswith("{") and '"message"' in stripped:
+        recovered = extract_message_field(stripped)
+        if recovered:
+            return AgentResponse(
+                message=recovered,
+                actions=(),
+                status="continue",
+                fallback=False,
+                raw_text=text,
+            )
+
     return AgentResponse.plain_text_fallback(text)
 
 
 def repair_chat_text(text: str) -> AgentResponse:
-    """Alias for repair_response — explicit name for ChatResponse.text input."""
     return repair_response(text)
