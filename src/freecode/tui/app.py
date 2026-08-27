@@ -11,7 +11,7 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.widgets import Input
 
-from freecode.agent import AgentCore
+from freecode.agent import AgentCore, AgentLoop
 from freecode.config import Config, get_logger, load_config
 from freecode.context import ContextEngine
 from freecode.domain.errors import LLMError, LLMRateLimitError, LLMServerError
@@ -239,27 +239,62 @@ class FreeCodeApp(App):
         transcript = self.query_one("#transcript-pane", TranscriptPane)
         try:
             activity.set_activity("Cooking...")
-            result = await self._agent.handle_user_message(text)
+            assert self._tools is not None and self._gate is not None
 
-            if result.chat is None and result.error:
-                transcript.write_error_message(result.message)
-                return
+            async def authorize(action):
+                req = self._gate.decide(action)
+                if req.decision.value == "allow":
+                    return True
+                if req.decision.value == "deny":
+                    return False
+                activity.set_activity("Waiting for approval...")
+                return await self._ask_approval(req)
 
-            reply = result.message or "(empty response)"
-            activity.set_activity("Writing...")
-            await transcript.stream_agent_message(reply)
+            loop = AgentLoop(
+                self._agent,
+                self._tools,
+                authorize=authorize,
+                max_steps=3,
+            )
+            outcome = await loop.run_user_message(text)
 
-            # Run proposed actions with approval modal
-            if result.response.actions and self._tools is not None and self._gate is not None:
-                await self._run_actions(result.response.actions, transcript, activity)
+            for step in outcome.steps:
+                result = step.turn
+                if result.chat is None and result.error:
+                    transcript.write_error_message(result.message)
+                    continue
+                reply = result.message or "(empty response)"
+                activity.set_activity("Writing...")
+                await transcript.stream_agent_message(reply)
+                for tr in step.tool_results:
+                    if tr.status == "denied":
+                        transcript.write_error_message(
+                            f"Denied: {tr.error or tr.tool}"
+                        )
+                    elif tr.ok:
+                        out = (tr.output or "")[:500]
+                        if out:
+                            await transcript.stream_agent_message(
+                                f"**Tool** `{tr.tool}`\n\n```\n{out}\n```"
+                            )
+                        else:
+                            await transcript.stream_agent_message(
+                                f"**Tool** `{tr.tool}` — ok"
+                            )
+                    else:
+                        transcript.write_error_message(
+                            f"Tool {tr.tool}: {tr.error or tr.status}"
+                        )
 
             self._persist_current()
-            log.debug(
-                "agent turn phase=%s fallback=%s actions=%d",
-                result.phase.value,
-                result.response.fallback,
-                len(result.response.actions),
-            )
+            last = outcome.last
+            if last is not None:
+                log.debug(
+                    "agent loop steps=%d reason=%s phase=%s",
+                    len(outcome.steps),
+                    outcome.stopped_reason,
+                    last.phase.value,
+                )
         except LLMRateLimitError as exc:
             self._scheduler.record_rate_limit(exc.retry_after_seconds)
             transcript.write_error_message(
