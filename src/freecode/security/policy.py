@@ -1,0 +1,72 @@
+"""
+security.policy - classify operations for approval decisions.
+
+Independent of TUI. Used by ApprovalGate and ToolExecutor.
+"""
+from __future__ import annotations
+
+import re
+from enum import Enum
+
+from freecode.config.settings import ApprovalSettings
+from freecode.domain.actions import Action, CommandAction, EditAction
+from freecode.tools.executor import is_readonly_command
+
+
+class RiskLevel(str, Enum):
+    READONLY = "readonly"
+    WRITE = "write"
+    DESTRUCTIVE = "destructive"
+    GIT_MUTATION = "git_mutation"
+
+
+# Destructive / high-risk command patterns
+_DESTRUCTIVE_RE = re.compile(
+    r"\b(rm\s+(-[a-zA-Z]*f|-[a-zA-Z]*r)|rmdir|del\b|format\b|"
+    r"mkfs|dd\s+if=|shutdown|reboot|:(){:|:&};:|"
+    r"git\s+push\s+.*(--force|-f)\b|git\s+reset\s+--hard|"
+    r"git\s+clean\s+-[a-z]*f|drop\s+table|truncate\s+table)\b",
+    re.IGNORECASE,
+)
+
+_GIT_MUTATION_RE = re.compile(
+    r"^\s*git\s+(add|commit|push|pull|fetch|merge|rebase|checkout|switch|"
+    r"branch|tag|stash|reset|clean|cherry-pick)\b",
+    re.IGNORECASE,
+)
+
+_DELETE_PATH_RE = re.compile(
+    r"\b(rm|rmdir|unlink|del)\b",
+    re.IGNORECASE,
+)
+
+
+def classify_command(command: str) -> RiskLevel:
+    cmd = (command or "").strip()
+    if not cmd:
+        return RiskLevel.WRITE
+    if _DESTRUCTIVE_RE.search(cmd) or _DELETE_PATH_RE.search(cmd):
+        return RiskLevel.DESTRUCTIVE
+    if _GIT_MUTATION_RE.match(cmd):
+        return RiskLevel.GIT_MUTATION
+    return RiskLevel.WRITE
+
+
+def classify_action(action: Action, settings: ApprovalSettings | None = None) -> RiskLevel:
+    if isinstance(action, EditAction):
+        return RiskLevel.WRITE
+    if isinstance(action, CommandAction):
+        settings = settings or ApprovalSettings()
+        if is_readonly_command(action.command, settings.readonly_allowlist):
+            return RiskLevel.READONLY
+        return classify_command(action.command)
+    return RiskLevel.WRITE
+
+
+def risk_label(level: RiskLevel) -> str:
+    return {
+        RiskLevel.READONLY: "read-only",
+        RiskLevel.WRITE: "write",
+        RiskLevel.DESTRUCTIVE: "destructive",
+        RiskLevel.GIT_MUTATION: "git mutation",
+    }[level]

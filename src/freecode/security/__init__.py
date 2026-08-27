@@ -1,4 +1,15 @@
 """
-security/ - implemented in ph-11 (Approval + security). Empty placeholder for now (ph-00,
-Foundation) so the package structure and imports are stable from the start.
+security/ - Approval + risk classification (ph-11).
 """
+from freecode.security.approval import ApprovalGate, ApprovalRequest, Decision
+from freecode.security.policy import RiskLevel, classify_action, classify_command, risk_label
+
+__all__ = [
+    "ApprovalGate",
+    "ApprovalRequest",
+    "Decision",
+    "RiskLevel",
+    "classify_action",
+    "classify_command",
+    "risk_label",
+]

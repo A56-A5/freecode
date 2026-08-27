@@ -9,7 +9,7 @@ Full spec, architecture, phase plan, and status tracker: see
 
 ## Status
 
-Currently on `ph-10` (Response protocol + repair). See `FreeCode.md` §8.21 for
+Currently on `ph-11` (Response protocol + repair). See `FreeCode.md` §8.21 for
 the per-phase status table.
 
 ### Live chat (early integration)
@@ -18,6 +18,12 @@ With `FREECODE_API_KEY` or `APIFREELLM_API_KEY` set, the TUI sends each
 message through Scheduler → ApiFreeLLM → repair and shows the model
 reply (plus cooldown/backoff on the bar). Without a key, mock replies
 from ph-01 still run so the UI stays usable offline.
+
+### ph-11 Approval + security
+
+`ApprovalGate` classifies risk (readonly / write / git mutation / destructive)
+and returns allow / deny / prompt. TUI shows an Allow/Deny modal. Slash commands:
+`/help`, `/sessions`, `/session new`, `/session switch <id>`.
 
 ### ph-10 Persistence
 
