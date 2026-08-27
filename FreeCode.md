@@ -737,7 +737,7 @@ what's actually done vs. merely started, without re-reading every branch.
 | ph-05 | Response protocol + repair | done, verified |
 | ph-06 | Agent Core | done, verified |
 | ph-07 | Tool system / MCP | done, verified |
-| ph-08 | Context Engine | not started |
+| ph-08 | Context Engine | done, verified |
 | ph-09 | Event system + coalescing | not started |
 | ph-10 | Persistence | not started |
 | ph-11 | Approval + security | not started |

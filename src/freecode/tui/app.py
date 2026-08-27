@@ -14,6 +14,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Input
 
 from freecode.agent import AgentCore
+from freecode.context import ContextEngine
 from freecode.config import Config, get_logger, load_config
 from freecode.domain.errors import LLMError, LLMRateLimitError, LLMServerError
 from freecode.domain.state import AgentPhase
@@ -57,6 +58,11 @@ class FreeCodeApp(App):
 
     def _build_agent(self) -> AgentCore:
         client = ApiFreeLLMClient(self._config.llm)
+        engine = ContextEngine(
+            root=self._config.paths.project_dir,
+            settings=self._config.context,
+        )
+        engine.refresh_index()
 
         async def send(message: str):
             await self._scheduler.wait_until_ready()
@@ -67,7 +73,7 @@ class FreeCodeApp(App):
             self._sync_cooldown_bar()
             return chat
 
-        return AgentCore(send=send)
+        return AgentCore(send=send, build_prompt=engine.prompt_builder)
 
     def action_interrupt(self) -> None:
         if self._agent is not None:
