@@ -36,8 +36,8 @@ HELP_TEXT = """\
 | `/sessions` | List saved sessions (one per line) |
 | `/session new [title]` | Create & switch to a new session |
 | `/new` | Fresh chat (no old memory) |
-| `/session switch <id>` | Switch to an existing session |
-| `/session delete <id>` | Delete a session |
+| `/session switch <n|id>` | Switch by list # or id prefix |
+| `/session delete <n|id>` | Delete by list # or id prefix |
 | `/session` | Show active session id |
 | `/edit` | Load last user prompt into the composer |
 | `/theme` | List color themes |
@@ -123,20 +123,41 @@ def _cmd_sessions(app: FreeCodeApp) -> CommandResult:
         return CommandResult(handled=True, message="No sessions yet. Use `/new`.")
     active = store.active_session_id()
     lines = ["**Sessions**", ""]
-    for s in rows:
+    for i, s in enumerate(rows, start=1):
         mark = "→" if s.id == active else " "
         title = (s.title or s.goal or "(untitled)").replace("\n", " ")[:40]
-        goal = (s.goal or "").replace("\n", " ")[:50]
         when = _fmt_ts(s.updated_at)
-        lines.append(f"{mark} `{s.id}`")
-        lines.append(f"    **{title}** · turn {s.turn} · {s.phase} · {when}")
-        if goal and goal != title:
-            lines.append(f"    goal: {goal}")
-        lines.append("")
-    lines.append("Switch: `/session switch <id>`")
-    lines.append("Delete: `/session delete <id>`")
+        short = s.id[:8]
+        lines.append(
+            f"{mark} **#{i}** `{short}` · {title} · turn {s.turn} · {s.phase} · {when}"
+        )
+    lines.append("")
+    lines.append("Switch: `/session switch 1` or `/session switch <id>`")
+    lines.append("Delete: `/session delete 1` or `/session delete <id>`")
     lines.append("New: `/new`")
     return CommandResult(handled=True, message="\n".join(lines))
+
+
+
+def _resolve_session_ref(app: FreeCodeApp, ref: str) -> str | None:
+    """Accept list index (#1 / 1), short prefix, or full id."""
+    ref = (ref or "").strip().lstrip("#")
+    if not ref:
+        return None
+    store = app.session_store
+    if store is None:
+        return None
+    rows = store.list_sessions(limit=50)
+    if ref.isdigit():
+        idx = int(ref)
+        if 1 <= idx <= len(rows):
+            return rows[idx - 1].id
+        return None
+    # exact or prefix match
+    for s in rows:
+        if s.id == ref or s.id.startswith(ref):
+            return s.id
+    return None
 
 
 def _cmd_session_show(app: FreeCodeApp) -> CommandResult:
@@ -155,25 +176,39 @@ def _cmd_session_new(app: FreeCodeApp, title: str) -> CommandResult:
 
 
 def _cmd_session_switch(app: FreeCodeApp, session_id: str) -> CommandResult:
-    ok = app.switch_session(session_id)
+    resolved = _resolve_session_ref(app, session_id)
+    if not resolved:
+        return CommandResult(
+            handled=True,
+            message=f"Session `{session_id}` not found. Use `/sessions` then `/session switch 1`.",
+            error=True,
+        )
+    ok = app.switch_session(resolved)
     if not ok:
         return CommandResult(
             handled=True,
             message=f"Session `{session_id}` not found.",
             error=True,
         )
-    return CommandResult(handled=True, message=f"Switched to session `{session_id}`")
+    return CommandResult(handled=True, message=f"Switched to session `{resolved[:8]}`")
 
 
 def _cmd_session_delete(app: FreeCodeApp, session_id: str) -> CommandResult:
-    ok = app.delete_session(session_id)
+    resolved = _resolve_session_ref(app, session_id)
+    if not resolved:
+        return CommandResult(
+            handled=True,
+            message=f"Session `{session_id}` not found. Use `/sessions` then `/session delete 1`.",
+            error=True,
+        )
+    ok = app.delete_session(resolved)
     if not ok:
         return CommandResult(
             handled=True,
-            message=f"Could not delete `{session_id}` (missing or is the only/active session).",
+            message=f"Could not delete `{resolved[:8]}`.",
             error=True,
         )
-    return CommandResult(handled=True, message=f"Deleted session `{session_id}`")
+    return CommandResult(handled=True, message=f"Deleted session `{resolved[:8]}`")
 
 
 def _cmd_theme(app: FreeCodeApp, name: str) -> CommandResult:

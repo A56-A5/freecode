@@ -129,8 +129,20 @@ class FreeCodeComposer(TextArea):
     def _show_palette(self, prefix: str) -> None:
         async def _run() -> None:
             result = await self.app.push_screen_wait(CommandPalette(prefix=prefix))
-            if result:
-                self.text = result
+            # Always clear residual "/" text first
+            self.clear()
+            if not result:
                 self.focus()
+                return
+            text = result.strip()
+            # Commands that need no further args: run immediately
+            auto = text in {
+                "/help", "/sessions", "/new", "/clear", "/edit", "/session", "/theme",
+            } or (text.startswith("/") and not text.endswith(" "))
+            if auto and " " not in text.strip():
+                self.post_message(MessageSubmitted(text))
+            else:
+                self.text = text
+            self.focus()
 
         self.app.run_worker(_run(), exclusive=False)

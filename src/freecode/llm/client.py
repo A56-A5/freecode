@@ -63,6 +63,22 @@ def _error_message(response: httpx.Response) -> str:
     return f"HTTP {response.status_code}"
 
 
+
+def _is_daily_quota_error(message: str) -> bool:
+    """Detect community daily quota messages (50 req / 24h per key)."""
+    low = (message or "").lower()
+    needles = (
+        "daily request limit",
+        "daily limit",
+        "50 requests",
+        "24h",
+        "24 h",
+        "quota exceeded",
+        "community daily",
+    )
+    return any(n in low for n in needles)
+
+
 class ApiFreeLLMClient:
     """
     Thin async client for POST /api/v1/chat.
@@ -114,7 +130,7 @@ class ApiFreeLLMClient:
 
     @property
     def has_api_key(self) -> bool:
-        return bool(self._api_key)
+        return bool(self._api_keys)
 
     async def __aenter__(self) -> ApiFreeLLMClient:
         await self._ensure_client()
@@ -169,11 +185,19 @@ class ApiFreeLLMClient:
         client = await self._ensure_client()
         body = request.to_body()
 
+        # No keys: still POST (mock/tests / open endpoints). Live community needs a key.
         if not self._api_keys:
-            raise LLMAuthError(
-                "No ApiFreeLLM API key configured.",
-                status_code=401,
-            )
+            try:
+                response = await client.post(self._endpoint, json=body)
+            except httpx.TimeoutException as exc:
+                raise LLMTransportError(
+                    f"Request timed out after {self._timeout:.0f}s"
+                ) from exc
+            except httpx.RequestError as exc:
+                raise LLMTransportError(
+                    f"ApiFreeLLM transport error: {exc}"
+                ) from exc
+            return self._map_response(response)
 
         attempted_keys: set[int] = set()
 
@@ -222,27 +246,52 @@ class ApiFreeLLMClient:
                     f"ApiFreeLLM transport error: {exc}"
                 ) from exc
 
+            # Daily quota can arrive as 429 *or* HTTP 200 + success:false.
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                except Exception:
+                    data = None
+                if isinstance(data, dict) and data.get("success") is False:
+                    err = data.get("error") or data.get("message") or "success=false"
+                    if not isinstance(err, str):
+                        err = str(err)
+                    if _is_daily_quota_error(err):
+                        self._exhausted_keys.add(key_index)
+                        log.warning(
+                            "ApiFreeLLM key %d/%d daily quota (200): %s",
+                            key_index + 1,
+                            len(self._api_keys),
+                            err[:120],
+                        )
+                        if self._rotate_key():
+                            continue
+                        raise LLMRateLimitError(
+                            "All configured ApiFreeLLM API keys have reached their "
+                            "daily community limit (50 requests / 24h per key). "
+                            "Add more keys via FREECODE_API_KEY_2, _3, … or wait.",
+                            status_code=429,
+                        )
+                return self._map_response(response)
+
             if response.status_code != 429:
                 return self._map_response(response)
 
             message = _error_message(response)
 
             if not _is_daily_quota_error(message):
-                # Normal 429 → let Scheduler deal with it.
+                # Normal inter-request 429 → Scheduler cooldown.
                 return self._map_response(response)
 
-            # This particular key has hit its daily quota.
             self._exhausted_keys.add(key_index)
-
             log.warning(
                 "ApiFreeLLM key %d/%d reached daily community quota",
                 key_index + 1,
                 len(self._api_keys),
             )
-
             if not self._rotate_key():
-                # Every key is exhausted.
                 return self._map_response(response)
+            continue
 
         raise LLMRateLimitError(
             "All configured ApiFreeLLM API keys have reached their daily "

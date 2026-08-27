@@ -34,8 +34,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec("/help", "", "Show shortcuts and commands"),
     CommandSpec("/sessions", "", "List saved sessions"),
     CommandSpec("/session new", "[title]", "Create and switch to a new session"),
-    CommandSpec("/session switch", "<id>", "Switch to an existing session"),
-    CommandSpec("/session delete", "<id>", "Delete a session"),
+    CommandSpec("/session switch", "<n|id>", "Switch by list # or id"),
+    CommandSpec("/session delete", "<n|id>", "Delete by list # or id"),
     CommandSpec("/session", "", "Show active session id"),
     CommandSpec("/new", "", "Fresh chat (no old memory)"),
     CommandSpec("/edit", "", "Load last user prompt into the composer"),
@@ -72,7 +72,7 @@ class CommandPalette(ModalScreen[str | None]):
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=True),
-        Binding("enter", "select", "Select", show=True),
+        Binding("enter", "select", "Select", priority=True, show=True),
     ]
 
     DEFAULT_CSS = """
@@ -118,7 +118,7 @@ class CommandPalette(ModalScreen[str | None]):
             Static("Commands", id="palette-title"),
             Input(value=self._prefix, placeholder="/…", id="palette-query"),
             ListView(id="palette-list"),
-            Static("Type to filter · Enter = select · Esc = cancel", id="palette-hint"),
+            Static("Type to filter · Enter = top match · Esc = cancel", id="palette-hint"),
             id="palette-box",
         )
 
@@ -129,7 +129,6 @@ class CommandPalette(ModalScreen[str | None]):
         q.cursor_position = len(q.value)
 
     def _rebuild_list(self) -> None:
-        """Replace list children without reusing widget ids (Textual DuplicateIds)."""
         self._rebuild_token += 1
         token = self._rebuild_token
         try:
@@ -139,14 +138,12 @@ class CommandPalette(ModalScreen[str | None]):
         self._specs = filter_commands(query)
 
         lv = self.query_one("#palette-list", ListView)
-        # Remove existing items first; clear() alone can race with append + keep ids
         for child in list(lv.children):
             child.remove()
 
         items = [ListItem(Label(spec.label)) for spec in self._specs]
 
         async def _mount() -> None:
-            # Drop if a newer rebuild started
             if token != self._rebuild_token:
                 return
             if items:
@@ -170,18 +167,16 @@ class CommandPalette(ModalScreen[str | None]):
         self._dismiss_selected()
 
     def _dismiss_selected(self) -> None:
-        try:
-            lv = self.query_one("#palette-list", ListView)
-            idx = lv.index if lv.index is not None else 0
-            if 0 <= idx < len(self._specs):
+        # Prefer ListView highlight; fall back to first filtered match.
+        if self._specs:
+            try:
+                lv = self.query_one("#palette-list", ListView)
+                idx = lv.index if lv.index is not None else 0
+                if not (0 <= idx < len(self._specs)):
+                    idx = 0
                 self.dismiss(self._specs[idx].insert_text)
                 return
-        except Exception:
-            pass
-        q = self.query_one("#palette-query", Input).value.strip()
-        if len(self._specs) == 1:
-            self.dismiss(self._specs[0].insert_text)
-        elif q.startswith("/"):
-            self.dismiss(q)
-        else:
-            self.dismiss(None)
+            except Exception:
+                self.dismiss(self._specs[0].insert_text)
+                return
+        self.dismiss(None)

@@ -21,7 +21,10 @@ python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
-export FREECODE_API_KEY="your-key" # or APIFREELLM_API_KEY
+export FREECODE_API_KEY="your-key"   # or APIFREELLM_API_KEY
+# Optional: cycle keys when one hits the community 50/day limit
+export FREECODE_API_KEY_2="second-key"
+export FREECODE_API_KEY_3="third-key"
 freecode
 ```
 
