@@ -11,6 +11,7 @@ from freecode.context.compress import compress_history, format_history
 from freecode.context.index import ProjectIndex, build_index
 from freecode.context.rank import read_snippets, select_relevant
 from freecode.context.tokens import budget_from_settings, estimate_tokens, trim_to_budget
+from freecode.context.coalesce import EventCoalescer
 from freecode.domain.state import AgentState
 
 log = get_logger(__name__)
@@ -37,6 +38,7 @@ class ContextEngine:
         self.root = Path(root).resolve()
         self.settings = settings or ContextSettings()
         self._index: ProjectIndex | None = None
+        self.coalescer = EventCoalescer()
 
     def refresh_index(self) -> ProjectIndex:
         self._index = build_index(self.root)
@@ -78,6 +80,14 @@ class ContextEngine:
         if state.facts:
             facts = state.facts[-20:]
             add("Known facts:\n" + "\n".join(f"- {f}" for f in facts))
+
+        events_block = self.coalescer.coalesce_for_prompt(
+            token_budget=max(200, int((total_budget - used) * 0.2)),
+            chars_per_token=cpt,
+            drain=True,
+        )
+        if events_block:
+            add(events_block)
 
         # History: allocate ~35% of remaining budget
         remaining = max(0, total_budget - used)

@@ -13,7 +13,12 @@ from freecode.config.logging import get_logger
 from freecode.config.settings import ApprovalPolicy, ApprovalSettings
 from freecode.domain.actions import Action, CommandAction, EditAction
 from freecode.tools import filesystem, git, search, shell
+from freecode.domain.events import command_finished_event, command_started_event, file_changed_event, tool_result_event
 from freecode.tools.results import ToolResult
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from freecode.context.coalesce import EventCoalescer
 
 log = get_logger(__name__)
 
@@ -57,9 +62,11 @@ class ToolExecutor:
         self,
         root: Path | str,
         approval: ApprovalSettings | None = None,
+        coalescer: EventCoalescer | None = None,
     ) -> None:
         self.root = Path(root).resolve()
         self.approval = approval or ApprovalSettings()
+        self.coalescer = coalescer
 
     async def execute_action(
         self,
@@ -77,16 +84,20 @@ class ToolExecutor:
             )
 
         if isinstance(action, EditAction):
-            return filesystem.apply_edit(
+            result = filesystem.apply_edit(
                 self.root, action.file, action.old, action.new
             )
+            self._emit_tool(result)
+            if result.ok:
+                self._emit(file_changed_event(action.file))
+            return result
         if isinstance(action, CommandAction):
-            # Readonly allowlisted commands still go through shell but marked
+            self._emit(command_started_event(action.command))
             result = await shell.run_command(action.command, cwd=self.root)
             readonly = is_readonly_command(
                 action.command, self.approval.readonly_allowlist
             )
-            return ToolResult(
+            out = ToolResult(
                 tool=result.tool,
                 status=result.status,
                 output=result.output,
@@ -94,6 +105,10 @@ class ToolExecutor:
                 data=result.data,
                 mutating=not readonly,
             )
+            self._emit_tool(out)
+            code = int((result.data or {}).get("exit_code", 1))
+            self._emit(command_finished_event(action.command, code, result.output))
+            return out
         return ToolResult(
             tool="unknown",
             status="error",
@@ -144,3 +159,18 @@ class ToolExecutor:
 
     async def search(self, query: str) -> ToolResult:
         return await search.search_text(self.root, query)
+
+    def _emit(self, event) -> None:
+        if self.coalescer is not None:
+            self.coalescer.emit(event)
+
+    def _emit_tool(self, result: ToolResult) -> None:
+        self._emit(
+            tool_result_event(
+                result.tool,
+                result.status,
+                result.output,
+                error=result.error,
+                mutating=result.mutating,
+            )
+        )

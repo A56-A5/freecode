@@ -9,7 +9,7 @@ Full spec, architecture, phase plan, and status tracker: see
 
 ## Status
 
-Currently on `ph-08` (Response protocol + repair). See `FreeCode.md` §8.21 for
+Currently on `ph-09` (Response protocol + repair). See `FreeCode.md` §8.21 for
 the per-phase status table.
 
 ### Live chat (early integration)
@@ -18,6 +18,10 @@ With `FREECODE_API_KEY` or `APIFREELLM_API_KEY` set, the TUI sends each
 message through Scheduler → ApiFreeLLM → repair and shows the model
 reply (plus cooldown/backoff on the bar). Without a key, mock replies
 from ph-01 still run so the UI stays usable offline.
+
+### ph-09 Event system + coalescing
+
+Domain events (`tool_result`, `file_changed`, …) and `EventCoalescer` batch activity during cooldown into the next ContextEngine prompt.
 
 ### ph-08 Context Engine
 
