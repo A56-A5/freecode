@@ -1,4 +1,39 @@
 """
-config/ - implemented in ph-02 (Configuration + logging). Empty placeholder for now (ph-00,
-Foundation) so the package structure and imports are stable from the start.
+config/ - configuration loading and structured application logging (ph-02).
+
+Public surface:
+  load_config()     - merge packaged defaults, user TOML, and env
+  setup_logging()   - configure the `freecode` logger
+  get_logger()      - obtain a namespaced logger
+  Config, *Settings - typed configuration model
+  ConfigError       - raised on invalid config
 """
+from freecode.config.loader import ConfigError, load_config
+from freecode.config.logging import get_logger, setup_logging
+from freecode.config.settings import (
+    ApprovalPolicy,
+    ApprovalSettings,
+    Config,
+    ContextSettings,
+    LLMSettings,
+    LogFormat,
+    LoggingSettings,
+    PathSettings,
+    SchedulerSettings,
+)
+
+__all__ = [
+    "ApprovalPolicy",
+    "ApprovalSettings",
+    "Config",
+    "ConfigError",
+    "ContextSettings",
+    "LLMSettings",
+    "LogFormat",
+    "LoggingSettings",
+    "PathSettings",
+    "SchedulerSettings",
+    "get_logger",
+    "load_config",
+    "setup_logging",
+]

@@ -731,7 +731,7 @@ what's actually done vs. merely started, without re-reading every branch.
 |---|---|---|
 | ph-00 | Foundation | done, verified |
 | ph-01 | TUI shell | in progress |
-| ph-02 | Configuration + logging | not started |
+| ph-02 | Configuration + logging | done, verified |
 | ph-03 | ApiFreeLLM client | not started |
 | ph-04 | Scheduler + cooldown | not started |
 | ph-05 | Response protocol + repair | not started |

@@ -1,4 +1,68 @@
 # FreeCode default configuration.
-# Placeholder (ph-00, Foundation) - the actual loader and full default
-# values (rate limits, token budget, approval policy, etc.) are added in
-# ph-02 (Configuration + logging).
+# Users override any subset by creating `.freecode/config.toml` in the
+# project directory. Missing keys fall back to these defaults.
+#
+# API credentials are NEVER stored here. Set them via environment:
+#   FREECODE_API_KEY or APIFREELLM_API_KEY
+
+[llm]
+endpoint = "https://apifreellm.com/api/v1/chat"
+model = "apifreellm"
+# Request timeout in seconds (network only; cooldown is separate).
+timeout_seconds = 60.0
+
+[scheduler]
+# Hard floor for normal cooldown. Live `delaySeconds` from the API is
+# preferred when present; this is the fallback minimum.
+cooldown_floor_seconds = 20.0
+# Cap for 429/5xx backoff (before jitter).
+backoff_cap_seconds = 120.0
+
+[context]
+# Soft budget for the single flat prompt string (~26k of the 32k window
+# leaves headroom for the response and silent truncation).
+token_budget = 26000
+context_window = 32000
+# Conservative chars-per-token estimate when the real tokenizer is unknown.
+chars_per_token = 4.0
+
+[approval]
+# Default policy for tool actions:
+#   ask            - always prompt the user before any mutating action
+#   auto_readonly  - auto-run read-only tools; ask for writes/shell/git mutations
+#   auto           - auto-run everything (dangerous; for trusted sandboxes only)
+default_policy = "auto_readonly"
+# Command prefixes that may auto-run under auto_readonly when treated as read-only.
+readonly_allowlist = [
+    "git status",
+    "git diff",
+    "git log",
+    "git show",
+    "git branch",
+    "pytest",
+    "python -m pytest",
+    "rg ",
+    "grep ",
+    "ls ",
+    "find ",
+    "cat ",
+    "head ",
+    "tail ",
+    "wc ",
+]
+
+[paths]
+# All paths are resolved relative to the project root (cwd at launch unless
+# overridden). Runtime state lives under runtime_dir and is gitignored.
+project_dir = "."
+runtime_dir = ".freecode"
+state_db = ".freecode/state.db"
+log_file = ".freecode/logs/freecode.log"
+
+[logging]
+# DEBUG | INFO | WARNING | ERROR | CRITICAL
+level = "INFO"
+# text = human-readable; json = one JSON object per line
+format = "text"
+# When true, also write to paths.log_file
+to_file = false
