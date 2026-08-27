@@ -739,7 +739,7 @@ what's actually done vs. merely started, without re-reading every branch.
 | ph-07 | Tool system / MCP | done, verified |
 | ph-08 | Context Engine | done, verified |
 | ph-09 | Event system + coalescing | done, verified |
-| ph-10 | Persistence | not started |
+| ph-10 | Persistence | done, verified |
 | ph-11 | Approval + security | not started |
 | ph-12 | Full integration | not started |
 | ph-13 | Hardening + packaging | not started |
