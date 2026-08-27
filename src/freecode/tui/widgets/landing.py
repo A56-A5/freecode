@@ -65,6 +65,9 @@ class LandingScreen(Vertical):
         width: 70%;
         max-width: 80;
         min-width: 30;
+        height: auto;
+        min-height: 3;
+        max-height: 8;
 
         border: solid $panel;
         background: $surface;

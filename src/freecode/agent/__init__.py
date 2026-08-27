@@ -1,4 +1,19 @@
 """
-agent/ - implemented in ph-06 (Agent Core). Empty placeholder for now (ph-00,
-Foundation) so the package structure and imports are stable from the start.
+agent/ - Agent Core orchestration (ph-06).
 """
+from freecode.agent.core import AgentCore, AgentTurnResult, default_prompt
+from freecode.agent.lifecycle import LifecycleError, apply_response, phase_from_status, transition
+from freecode.domain.state import AgentPhase, AgentState, TurnRecord
+
+__all__ = [
+    "AgentCore",
+    "AgentPhase",
+    "AgentState",
+    "AgentTurnResult",
+    "LifecycleError",
+    "TurnRecord",
+    "apply_response",
+    "default_prompt",
+    "phase_from_status",
+    "transition",
+]
