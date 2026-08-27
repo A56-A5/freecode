@@ -736,7 +736,7 @@ what's actually done vs. merely started, without re-reading every branch.
 | ph-04 | Scheduler + cooldown | done, verified |
 | ph-05 | Response protocol + repair | done, verified |
 | ph-06 | Agent Core | done, verified |
-| ph-07 | Tool system / MCP | not started |
+| ph-07 | Tool system / MCP | done, verified |
 | ph-08 | Context Engine | not started |
 | ph-09 | Event system + coalescing | not started |
 | ph-10 | Persistence | not started |

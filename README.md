@@ -9,7 +9,7 @@ Full spec, architecture, phase plan, and status tracker: see
 
 ## Status
 
-Currently on `ph-06` (Response protocol + repair). See `FreeCode.md` §8.21 for
+Currently on `ph-07` (Response protocol + repair). See `FreeCode.md` §8.21 for
 the per-phase status table.
 
 ### Live chat (early integration)
@@ -18,6 +18,15 @@ With `FREECODE_API_KEY` or `APIFREELLM_API_KEY` set, the TUI sends each
 message through Scheduler → ApiFreeLLM → repair and shows the model
 reply (plus cooldown/backoff on the bar). Without a key, mock replies
 from ph-01 still run so the UI stays usable offline.
+
+### ph-07 Tool system / MCP
+
+Local tools: filesystem (read/write/list/edit), shell, git helpers, search.
+`ToolExecutor` respects approval policy (`ask` / `auto_readonly` / `auto`).
+MCP package is a façade over the local executor for later server adapters.
+
+Landing + conversation both use the multi-line composer (Enter = newline,
+Ctrl+Enter = send).
 
 ### ph-06 Agent Core
 

@@ -1,4 +1,15 @@
 """
-tools/ - implemented in ph-07 (Tool system / MCP). Empty placeholder for now (ph-00,
-Foundation) so the package structure and imports are stable from the start.
+tools/ - local execution layer (ph-07).
+
+Filesystem, shell, git, and search. MCP package stays a future adapter.
 """
+from freecode.tools.executor import ToolExecutor, action_needs_approval, is_readonly_command
+from freecode.tools.results import ToolResult, ToolStatus
+
+__all__ = [
+    "ToolExecutor",
+    "ToolResult",
+    "ToolStatus",
+    "action_needs_approval",
+    "is_readonly_command",
+]
