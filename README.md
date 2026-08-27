@@ -9,8 +9,30 @@ Full spec, architecture, phase plan, and status tracker: see
 
 ## Status
 
-Currently on `ph-03` (ApiFreeLLM client). See `FreeCode.md` §8.21 for
+Currently on `ph-04` (Scheduler + cooldown). See `FreeCode.md` §8.21 for
 the per-phase status table.
+
+### ph-04 Scheduler + cooldown
+
+Independent rate-limit scheduler with a pluggable clock (real wall time or
+`FakeClock` for instant unit tests).
+
+* **cooldown** — after success, uses `max(floor, delaySeconds)` from the API
+* **backoff** — after 429/5xx, capped exponential backoff with jitter
+* **priority queue** — user > tool-result > continuation > background
+* Snapshot maps cleanly onto the existing TUI `CooldownBar` contract
+* **No automatic retries** — caller records outcomes and waits
+
+```python
+from freecode.llm import Scheduler, FakeClock, ApiFreeLLMClient
+
+sched = Scheduler(cfg.scheduler)
+await sched.wait_until_ready()
+resp = await client.send(msg)
+sched.record_success(resp.delay_seconds)
+# on 429:
+# sched.record_rate_limit(exc.retry_after_seconds)
+```
 
 ### ph-03 ApiFreeLLM client
 
