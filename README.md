@@ -9,8 +9,30 @@ Full spec, architecture, phase plan, and status tracker: see
 
 ## Status
 
-Currently on `ph-02` (Configuration + logging). See `FreeCode.md` §8.21 for
+Currently on `ph-03` (ApiFreeLLM client). See `FreeCode.md` §8.21 for
 the per-phase status table.
+
+### ph-03 ApiFreeLLM client
+
+Independent async HTTP client for `POST /api/v1/chat`. Transport only —
+no scheduler, no agent protocol parsing, no TUI.
+
+```python
+from freecode.config import load_config
+from freecode.llm import ApiFreeLLMClient
+
+cfg = load_config()
+async with ApiFreeLLMClient(cfg.llm) as client:
+    response = await client.send("hello")
+    print(response.text, response.delay_seconds)
+```
+
+* Request body: `{"message": "...", "model": "apifreellm"}`
+* Parses `success`, `response`, `tier`, `features.delaySeconds`
+* Maps 400/401/403/429/5xx to domain errors (`LLMAuthError`,
+  `LLMRateLimitError`, …) — **no automatic retries**
+* Auth via `Authorization: Bearer` from `FREECODE_API_KEY` /
+  `APIFREELLM_API_KEY`
 
 ### ph-02 Configuration + logging
 
