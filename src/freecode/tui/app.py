@@ -1,8 +1,8 @@
 """
 tui.app - FreeCode Textual application.
 
-Live path: slash commands | AgentCore → stream reply → approval modal for
-mutating actions → ToolExecutor. Sessions persist via SQLite.
+Live path: slash commands | AgentCore/AgentLoop → stream reply → approval
+modal → tools → event coalescing → persistence.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from freecode.agent import AgentCore, AgentLoop
 from freecode.config import Config, get_logger, load_config
 from freecode.context import ContextEngine
 from freecode.domain.errors import LLMError, LLMRateLimitError, LLMServerError
-from freecode.domain.state import AgentPhase, AgentState
+from freecode.domain.state import AgentState
 from freecode.llm import ApiFreeLLMClient, Scheduler
 from freecode.security import ApprovalGate, ApprovalRequest
 from freecode.storage import CooldownStore, EventStore, SessionStore
@@ -27,7 +27,8 @@ from freecode.tui.theme import APP_TITLE, build_theme
 from freecode.tui.widgets.activity import ActivityIndicator
 from freecode.tui.widgets.approval import ApprovalModal
 from freecode.tui.widgets.cooldown import CooldownBar
-from freecode.tui.widgets.input import MessageSubmitted
+from freecode.tui.widgets.footer_stats import FooterStats
+from freecode.tui.widgets.input import FreeCodeComposer, MessageSubmitted
 
 log = get_logger(__name__)
 
@@ -38,6 +39,7 @@ class FreeCodeApp(App):
     BINDINGS = [
         ("ctrl+c", "quit", "Quit"),
         ("ctrl+x", "interrupt", "Interrupt"),
+        ("ctrl+e", "edit_last", "Edit last prompt"),
     ]
 
     def __init__(self, config: Config | None = None) -> None:
@@ -47,16 +49,14 @@ class FreeCodeApp(App):
         self._agent: AgentCore | None = None
         self._engine: ContextEngine | None = None
         self._busy = False
+        self._pending_messages: list[str] = []
+        self._last_user_prompt: str = ""
         self._session_store: SessionStore | None = None
         self._event_store: EventStore | None = None
         self._cooldown_store: CooldownStore | None = None
         self._session_id: str | None = None
         self._gate: ApprovalGate | None = None
         self._tools: ToolExecutor | None = None
-        self._pending_prompt: ApprovalRequest | None = None
-        self._prompt_result: bool | None = None
-
-    # ── session API used by slash commands ───────────────────────────
 
     @property
     def session_store(self) -> SessionStore | None:
@@ -70,9 +70,10 @@ class FreeCodeApp(App):
         self._persist_current()
         state = AgentState()
         assert self._session_store is not None
-        sid = self._session_store.create(title=title, state=state)
+        sid = self._session_store.create(title=title or "session", state=state)
         self._session_id = sid
         self._agent = self._build_agent(state)
+        self._last_user_prompt = ""
         self._reset_transcript_ui()
         self._sync_footer()
         return sid
@@ -87,7 +88,6 @@ class FreeCodeApp(App):
         self._session_store.set_meta("active_session_id", session_id)
         self._agent = self._build_agent(state)
         self._reset_transcript_ui()
-        # Replay short history into the transcript so the user sees context
         try:
             transcript = self.query_one("#transcript-pane", TranscriptPane)
             for turn in state.history[-12:]:
@@ -99,6 +99,50 @@ class FreeCodeApp(App):
             pass
         self._sync_footer()
         return True
+
+    def delete_session(self, session_id: str) -> bool:
+        if self._session_store is None:
+            return False
+        if session_id == self._session_id:
+            self.new_session(title="session")
+        try:
+            self._session_store.delete_session(session_id)
+            self._sync_footer()
+            return True
+        except Exception:
+            log.exception("delete session failed")
+            return False
+
+    def load_last_prompt_into_composer(self) -> str:
+        text = self._last_user_prompt or ""
+        if not text and self._agent is not None:
+            for turn in reversed(self._agent.state.history):
+                if turn.role == "user":
+                    text = turn.content
+                    break
+        if not text:
+            return ""
+        try:
+            composer = self.query_one("#chat-input", FreeCodeComposer)
+            composer.text = text
+            composer.focus()
+        except Exception:
+            try:
+                inp = self.query_one("#landing-input", Input)
+                inp.value = text
+                inp.focus()
+            except Exception:
+                pass
+        return text
+
+    def action_edit_last(self) -> None:
+        if not self.load_last_prompt_into_composer():
+            try:
+                self.query_one("#transcript-pane", TranscriptPane).write_error_message(
+                    "No previous prompt to edit. Tip: /edit or Ctrl+E"
+                )
+            except Exception:
+                pass
 
     def compose(self) -> ComposeResult:
         yield MainLayout()
@@ -115,8 +159,7 @@ class FreeCodeApp(App):
         self._event_store = EventStore(db)
         self._cooldown_store = CooldownStore(db)
 
-        # Fresh session each launch so prior chats do not leak into context.
-        # Resume via: /sessions then /session switch <id>
+        # Fresh session each launch — resume via /sessions
         state = AgentState()
         self._session_id = self._session_store.create(title="session", state=state)
         self._agent = self._build_agent(state)
@@ -142,7 +185,7 @@ class FreeCodeApp(App):
 
         self._gate = ApprovalGate(
             self._config.approval,
-            prompt_fn=self._sync_approval_prompt,
+            prompt_fn=None,
             coalescer=engine.coalescer,
         )
         self._tools = ToolExecutor(
@@ -166,17 +209,6 @@ class FreeCodeApp(App):
             state=state if state is not None else AgentState(),
             build_prompt=engine.prompt_builder,
         )
-
-    def _sync_approval_prompt(self, request: ApprovalRequest) -> bool:
-        """
-        Blocking prompt from worker thread context is awkward in Textual;
-        we use a flag + call_from_thread pattern via push_screen_wait in async path instead.
-        For ApprovalGate.authorize used from async tool runner, prefer async_approve.
-        """
-        # Fallback when called outside async UI path: deny (safe).
-        if self._prompt_result is not None:
-            return self._prompt_result
-        return False
 
     async def _ask_approval(self, request: ApprovalRequest) -> bool:
         return await self.push_screen_wait(ApprovalModal(request))
@@ -203,25 +235,36 @@ class FreeCodeApp(App):
 
     def _handle_user_text(self, text: str) -> None:
         text = (text or "").strip()
-        if not text or self._busy:
+        if not text:
+            return
+
+        if self._busy:
+            self._pending_messages.append(text)
+            try:
+                self.query_one("#transcript-pane", TranscriptPane).write_error_message(
+                    f"Queued ({len(self._pending_messages)}) — will send after Cooking finishes."
+                )
+            except Exception:
+                pass
             return
 
         layout = self.query_one(MainLayout)
         transcript = self.query_one("#transcript-pane", TranscriptPane)
         layout.start_conversation()
 
-        # Slash commands (no LLM)
         cmd = try_handle_slash(self, text)
         if cmd.handled:
             transcript.write_user_message(text)
             if cmd.error:
                 transcript.write_error_message(cmd.message)
             else:
-                # help/sessions render as agent-style markdown
-                self.run_worker(transcript.stream_agent_message(cmd.message), exclusive=False)
+                self.run_worker(
+                    transcript.stream_agent_message(cmd.message), exclusive=False
+                )
             return
 
         transcript.write_user_message(text)
+        self._last_user_prompt = text
 
         if not self._config.llm.api_key:
             self._busy = True
@@ -243,6 +286,7 @@ class FreeCodeApp(App):
         finally:
             activity.set_idle()
             self._busy = False
+            self._flush_pending_messages()
 
     async def _live_reply(self, text: str) -> None:
         assert self._agent is not None
@@ -252,7 +296,7 @@ class FreeCodeApp(App):
             activity.set_activity("Cooking...")
             assert self._tools is not None and self._gate is not None
 
-            async def authorize(action):
+            async def authorize(action) -> bool:
                 req = self._gate.decide(action)
                 if req.decision.value == "allow":
                     return True
@@ -265,7 +309,7 @@ class FreeCodeApp(App):
                 self._agent,
                 self._tools,
                 authorize=authorize,
-                max_steps=3,
+                max_steps=5,
             )
             outcome = await loop.run_user_message(text)
 
@@ -279,11 +323,9 @@ class FreeCodeApp(App):
                 await transcript.stream_agent_message(reply)
                 for tr in step.tool_results:
                     if tr.status == "denied":
-                        transcript.write_error_message(
-                            f"Denied: {tr.error or tr.tool}"
-                        )
+                        transcript.write_error_message(f"Denied: {tr.error or tr.tool}")
                     elif tr.ok:
-                        out = (tr.output or "")[:500]
+                        out = (tr.output or "")[:800]
                         if out:
                             await transcript.stream_agent_message(
                                 f"**Tool** `{tr.tool}`\n\n```\n{out}\n```"
@@ -298,18 +340,16 @@ class FreeCodeApp(App):
                         )
 
             self._persist_current()
-            last = outcome.last
-            if last is not None:
+            if outcome.last is not None:
                 log.debug(
-                    "agent loop steps=%d reason=%s phase=%s",
+                    "agent loop steps=%d reason=%s",
                     len(outcome.steps),
                     outcome.stopped_reason,
-                    last.phase.value,
                 )
         except LLMRateLimitError as exc:
             self._scheduler.record_rate_limit(exc.retry_after_seconds)
             transcript.write_error_message(
-                f"Rate limited by ApiFreeLLM. Cooling down"
+                f"Rate limited. Cooling down"
                 f"{f' (~{exc.retry_after_seconds:.0f}s)' if exc.retry_after_seconds else ''}."
             )
             log.warning("rate limited: %s", exc)
@@ -328,44 +368,13 @@ class FreeCodeApp(App):
             self._busy = False
             self._sync_cooldown_bar()
             self._persist_cooldown()
+            self._flush_pending_messages()
 
-    async def _run_actions(self, actions, transcript: TranscriptPane, activity: ActivityIndicator) -> None:
-        assert self._tools is not None and self._gate is not None
-        for action in actions:
-            req = self._gate.decide(action)
-            approved = True
-            if req.decision.value == "prompt":
-                activity.set_activity("Waiting for approval...")
-                approved = await self._ask_approval(req)
-                if self._engine is not None:
-                    from freecode.domain.events import approval_result_event
-                    self._engine.coalescer.emit(
-                        approval_result_event(approved, req.summary)
-                    )
-            elif req.decision.value == "deny":
-                approved = False
-
-            if not approved:
-                transcript.write_error_message(f"Denied: {req.summary}")
-                continue
-
-            activity.set_activity(f"Running: {req.summary[:40]}...")
-            # ToolExecutor also checks policy; pass approved=True after gate
-            result = await self._tools.execute_action(action, approved=True)
-            if result.ok:
-                out = (result.output or "")[:500]
-                if out:
-                    await transcript.stream_agent_message(f"**Tool** `{result.tool}`\n\n```\n{out}\n```")
-                else:
-                    await transcript.stream_agent_message(f"**Tool** `{result.tool}` — ok")
-            else:
-                transcript.write_error_message(
-                    f"Tool {result.tool}: {result.error or result.status}"
-                )
-            if self._session_id and self._event_store and self._engine:
-                drained = self._engine.coalescer.peek()
-                if drained:
-                    self._event_store.append_many(self._session_id, drained)
+    def _flush_pending_messages(self) -> None:
+        if not self._pending_messages or self._busy:
+            return
+        nxt = self._pending_messages.pop(0)
+        self.call_later(self._handle_user_text, nxt)
 
     def _persist_current(self) -> None:
         if self._session_store is None or self._session_id is None or self._agent is None:
@@ -402,7 +411,6 @@ class FreeCodeApp(App):
         else:
             bar.set_idle()
 
-
     def _reset_transcript_ui(self) -> None:
         try:
             layout = self.query_one(MainLayout)
@@ -414,12 +422,9 @@ class FreeCodeApp(App):
 
     def _sync_footer(self) -> None:
         try:
-            from freecode.tui.widgets.footer_stats import FooterStats
-
             footer = self.query_one("#footer-stats", FooterStats)
             sid = self._session_id or ""
-            short = sid[:8] if sid else ""
-            footer.set_stats(session_label=short)
+            footer.set_stats(session_label=sid[:8] if sid else "")
         except Exception:
             pass
 

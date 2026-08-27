@@ -17,14 +17,19 @@ from freecode.domain.state import AgentState
 log = get_logger(__name__)
 
 _SYSTEM_HINT = (
-    "You are FreeCode, a terminal coding agent. "
+    "You are FreeCode, a terminal coding agent with REAL tools on the user machine. "
     "Reply with JSON only of the form "
     '{"message":"...","actions":[],"status":"continue|done|needs_input",'
     '"context_update":{"facts":[]}}. '
-    "CRITICAL: Put the COMPLETE user-visible answer inside message, including "
-    "full source code in markdown fenced blocks. Never say you will write code "
-    "without including that code in message. Do not invent paths or folders "
-    "the user never mentioned. "
+    "CRITICAL rules:\n"
+    "1) Put the COMPLETE user-visible answer in message (full code in markdown fences). "
+    "Never claim you wrote code without including it.\n"
+    "2) You CAN run shell/search/edit: put them in actions, e.g. "
+    '{"type":"command","command":"find ~ -name sticky.rs 2>/dev/null","reason":"locate file"}. '
+    "The host will prompt Allow/Deny then execute. Never say you lack filesystem access — use actions.\n"
+    "3) Prefer actions over telling the user to run commands themselves.\n"
+    "4) Do not invent paths the user never mentioned.\n"
+    "5) After tool results appear in context, continue the task (status continue) or finish (done).\n"
     "Action types: edit {file,old,new}, command {command,reason}."
 )
 

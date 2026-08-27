@@ -73,7 +73,8 @@ class AgentLoop:
         ):
             # Continuation: model sees coalesced tool events via ContextEngine
             cont = await self.core.handle_user_message(
-                "[system] Tool results are in context. Continue the task or set status done."
+                "[system] Tool results from the previous step are in the Events section. "
+                "Use them to answer the user. Propose more actions if needed, or set status done."
             )
             tool_results = await self._maybe_run_actions(cont.response.actions)
             outcome.steps.append(StepOutcome(turn=cont, tool_results=tool_results))
