@@ -730,7 +730,7 @@ what's actually done vs. merely started, without re-reading every branch.
 | Branch | Phase | Status |
 |---|---|---|
 | ph-00 | Foundation | done, verified |
-| ph-01 | TUI shell | in progress |
+| ph-01 | TUI shell | done, verified |
 | ph-02 | Configuration + logging | done, verified |
 | ph-03 | ApiFreeLLM client | done, verified |
 | ph-04 | Scheduler + cooldown | done, verified |
@@ -742,7 +742,7 @@ what's actually done vs. merely started, without re-reading every branch.
 | ph-10 | Persistence | done, verified |
 | ph-11 | Approval + security | done, verified |
 | ph-12 | Full integration | done, verified |
-| ph-13 | Hardening + packaging | not started |
+| ph-13 | Hardening + packaging | done, verified |
 
 Status values: `not started` / `in progress` / `done, unverified` / `done, verified`.
 Use `done, verified` only after tests pass AND manual verification happened

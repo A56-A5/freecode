@@ -5,6 +5,8 @@ description = "Terminal-based, MCP-driven AI coding agent built on ApiFreeLLM's 
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+authors = [{ name = "FreeCode contributors" }]
+keywords = ["tui", "llm", "agent", "apifreellm", "coding"]
 dependencies = [
     "textual>=0.58",
     "httpx>=0.27",
@@ -32,3 +34,6 @@ freecode = ["config/*.toml", "tui/*.tcss"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[project.urls]
+Homepage = "https://github.com/A56-A5/freecode"

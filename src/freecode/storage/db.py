@@ -1,5 +1,7 @@
 """
 storage.db - SQLite connection helpers for FreeCode persistence.
+
+Uses stdlib ``sqlite3`` (sync). Adequate for free-tier cadence; swap to ``aiosqlite`` if profiling shows event-loop stalls under load.
 """
 from __future__ import annotations
 

@@ -9,7 +9,7 @@ Full spec, architecture, phase plan, and status tracker: see
 
 ## Status
 
-Currently on `ph-12` (Response protocol + repair). See `FreeCode.md` §8.21 for
+Currently on `ph-13` (Hardening + packaging). Phases 00–12 are done, verified. See `FreeCode.md` §8.21 for
 the per-phase status table.
 
 ### Live chat (early integration)
@@ -199,6 +199,37 @@ The activity indicator, cooldown bar, footer statistics, and configurable
 theme are implemented as TUI components. The cooldown widget exposes the
 interface that the future Scheduler will use, but the real Scheduler and
 API-driven cooldown behavior arrive in later phases.
+
+
+## Install
+
+```bash
+# From a clone
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+
+export FREECODE_API_KEY="your-key"   # or APIFREELLM_API_KEY
+freecode
+```
+
+PyPI-style install (when published):
+
+```bash
+pip install freecode
+freecode
+```
+
+Without an API key the TUI runs in **mock** mode (layout testing only).
+
+## Development
+
+```bash
+pytest
+```
+
+See `FreeCode.md` for architecture and the phase status table (§8.21).
+
 
 ## Development setup
 
