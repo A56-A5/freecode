@@ -734,7 +734,7 @@ what's actually done vs. merely started, without re-reading every branch.
 | ph-02 | Configuration + logging | done, verified |
 | ph-03 | ApiFreeLLM client | done, verified |
 | ph-04 | Scheduler + cooldown | done, verified |
-| ph-05 | Response protocol + repair | not started |
+| ph-05 | Response protocol + repair | done, verified |
 | ph-06 | Agent Core | not started |
 | ph-07 | Tool system / MCP | not started |
 | ph-08 | Context Engine | not started |

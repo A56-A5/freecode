@@ -9,8 +9,24 @@ Full spec, architecture, phase plan, and status tracker: see
 
 ## Status
 
-Currently on `ph-04` (Scheduler + cooldown). See `FreeCode.md` §8.21 for
+Currently on `ph-05` (Response protocol + repair). See `FreeCode.md` §8.21 for
 the per-phase status table.
+
+### ph-05 Response protocol + repair
+
+Turns raw model text into a structured `AgentResponse` without burning an
+extra LLM slot on parse failure.
+
+```python
+from freecode.llm import repair_response
+
+agent = repair_response(chat_response.text)
+# agent.message, agent.actions, agent.status, agent.context_update
+# agent.fallback is True when plain-text degrade path was used
+```
+
+Handles pure JSON, markdown fences, surrounding prose, malformed output,
+and safe plain-text fallback. Action types: `edit`, `command`.
 
 ### ph-04 Scheduler + cooldown
 
