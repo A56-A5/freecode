@@ -1,18 +1,15 @@
 """
-tui.widgets.command_palette - live `/` command picker.
-
-Opens when the composer starts with `/`, filters as the user types,
-Tab/Enter completes the selected command into the composer.
+tui.widgets.command_palette - live `/` command picker with query field.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from textual import on
 from textual.binding import Binding
 from textual.containers import Vertical
-from textual.message import Message
 from textual.screen import ModalScreen
-from textual.widgets import Label, ListItem, ListView, Static
+from textual.widgets import Input, Label, ListItem, ListView, Static
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,11 +30,9 @@ class CommandSpec:
         return f"{self.name}{hint}  —  {self.description}"
 
 
-# Single source of truth for discoverability (dispatch stays in commands.py).
 COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec("/help", "", "Show shortcuts and commands"),
     CommandSpec("/sessions", "", "List saved sessions"),
-    CommandSpec("/session", "new|switch|delete|show", "Session management"),
     CommandSpec("/session new", "[title]", "Create and switch to a new session"),
     CommandSpec("/session switch", "<id>", "Switch to an existing session"),
     CommandSpec("/session delete", "<id>", "Delete a session"),
@@ -45,17 +40,24 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec("/new", "", "Fresh chat (no old memory)"),
     CommandSpec("/edit", "", "Load last user prompt into the composer"),
     CommandSpec("/clear", "", "Alias for /new"),
+    CommandSpec("/theme", "[name]", "List or switch color themes"),
 )
 
 
 def filter_commands(prefix: str) -> list[CommandSpec]:
-    q = (prefix or "").strip().lower()
+    q = (prefix or "/").strip().lower()
     if not q.startswith("/"):
-        return []
+        q = "/" + q
     hits = [c for c in COMMAND_SPECS if c.name.startswith(q) or q in c.name]
+    if not hits and len(q) > 1:
+        tail = q[1:]
+        hits = [
+            c
+            for c in COMMAND_SPECS
+            if tail in c.name.lower() or tail in c.description.lower()
+        ]
     if not hits:
-        hits = [c for c in COMMAND_SPECS if q[1:] in c.name.lower() or q[1:] in c.description.lower()]
-    # de-dupe by name preserving order
+        hits = list(COMMAND_SPECS)
     seen: set[str] = set()
     out: list[CommandSpec] = []
     for c in hits:
@@ -65,14 +67,8 @@ def filter_commands(prefix: str) -> list[CommandSpec]:
     return out
 
 
-class CommandChosen(Message):
-    def __init__(self, text: str) -> None:
-        super().__init__()
-        self.text = text
-
-
 class CommandPalette(ModalScreen[str | None]):
-    """Return the insert text for the chosen command, or None if cancelled."""
+    """Live-filtering command picker. Returns insert text or None."""
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=True),
@@ -87,7 +83,7 @@ class CommandPalette(ModalScreen[str | None]):
         width: 72;
         max-width: 90%;
         height: auto;
-        max-height: 18;
+        max-height: 20;
         border: thick $accent;
         background: $surface;
         padding: 1 1;
@@ -95,6 +91,9 @@ class CommandPalette(ModalScreen[str | None]):
     #palette-title {
         text-style: bold;
         color: $accent;
+        margin-bottom: 1;
+    }
+    #palette-query {
         margin-bottom: 1;
     }
     #palette-list {
@@ -110,26 +109,56 @@ class CommandPalette(ModalScreen[str | None]):
 
     def __init__(self, prefix: str = "/") -> None:
         super().__init__()
-        self.prefix = prefix
-        self._specs = filter_commands(prefix) or list(COMMAND_SPECS)
+        self._prefix = prefix if prefix.startswith("/") else f"/{prefix}"
+        self._specs: list[CommandSpec] = filter_commands(self._prefix)
+        self._rebuild_token = 0
 
     def compose(self):
-        items = [
-            ListItem(Label(spec.label), id=f"cmd-{i}")
-            for i, spec in enumerate(self._specs)
-        ]
         yield Vertical(
             Static("Commands", id="palette-title"),
-            ListView(*items, id="palette-list"),
-            Static("Enter = select · Esc = cancel · filter by typing /…", id="palette-hint"),
+            Input(value=self._prefix, placeholder="/…", id="palette-query"),
+            ListView(id="palette-list"),
+            Static("Type to filter · Enter = select · Esc = cancel", id="palette-hint"),
             id="palette-box",
         )
 
     def on_mount(self) -> None:
+        self.call_after_refresh(self._rebuild_list)
+        q = self.query_one("#palette-query", Input)
+        q.focus()
+        q.cursor_position = len(q.value)
+
+    def _rebuild_list(self) -> None:
+        """Replace list children without reusing widget ids (Textual DuplicateIds)."""
+        self._rebuild_token += 1
+        token = self._rebuild_token
         try:
-            self.query_one("#palette-list", ListView).index = 0
+            query = self.query_one("#palette-query", Input).value
         except Exception:
-            pass
+            query = self._prefix
+        self._specs = filter_commands(query)
+
+        lv = self.query_one("#palette-list", ListView)
+        # Remove existing items first; clear() alone can race with append + keep ids
+        for child in list(lv.children):
+            child.remove()
+
+        items = [ListItem(Label(spec.label)) for spec in self._specs]
+
+        async def _mount() -> None:
+            # Drop if a newer rebuild started
+            if token != self._rebuild_token:
+                return
+            if items:
+                await lv.mount(*items)
+                if token == self._rebuild_token and self._specs:
+                    lv.index = 0
+
+        self.app.run_worker(_mount(), exclusive=False)
+
+    @on(Input.Changed, "#palette-query")
+    def _on_query_changed(self, event: Input.Changed) -> None:
+        self._rebuild_list()
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -149,4 +178,10 @@ class CommandPalette(ModalScreen[str | None]):
                 return
         except Exception:
             pass
-        self.dismiss(None)
+        q = self.query_one("#palette-query", Input).value.strip()
+        if len(self._specs) == 1:
+            self.dismiss(self._specs[0].insert_text)
+        elif q.startswith("/"):
+            self.dismiss(q)
+        else:
+            self.dismiss(None)

@@ -141,3 +141,40 @@ class TestTheme:
         )
         theme = build_theme()
         assert theme.accent == "#abcdef"
+
+
+class TestCommandPaletteFilter:
+    def test_filter_help(self):
+        from freecode.tui.widgets.command_palette import filter_commands
+
+        hits = filter_commands("/he")
+        assert any(c.name == "/help" for c in hits)
+
+    def test_filter_session(self):
+        from freecode.tui.widgets.command_palette import filter_commands
+
+        hits = filter_commands("/session")
+        names = [c.name for c in hits]
+        assert any("session" in n for n in names)
+
+    def test_filter_empty_shows_all(self):
+        from freecode.tui.widgets.command_palette import COMMAND_SPECS, filter_commands
+
+        hits = filter_commands("/")
+        assert len(hits) >= 5
+
+
+class TestThemePresets:
+    def test_list_themes(self):
+        from freecode.tui.theme import list_theme_names
+
+        names = list_theme_names()
+        assert "freecode-dark" in names
+        assert "freecode-light" in names
+
+    def test_build_light(self):
+        from freecode.tui.theme import build_theme
+
+        theme = build_theme(name="freecode-light")
+        assert theme.name == "freecode-light"
+        assert theme.dark is False

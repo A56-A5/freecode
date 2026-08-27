@@ -8,11 +8,41 @@ from pathlib import Path
 from freecode.tools.results import ToolResult
 
 
+class PathEscapeError(ValueError):
+    """Path resolves outside the project root."""
+
+    def __init__(self, rel: str, target: Path, root: Path) -> None:
+        super().__init__(f"path escapes project root: {rel}")
+        self.rel = rel
+        self.target = target
+        self.root = root
+
+
+def path_escapes_root(root: Path, rel: str) -> Path | None:
+    """Return absolute target if *rel* resolves outside *root*, else None."""
+    root = root.resolve()
+    # Absolute operands ignore the left side of Path./
+    target = Path(rel).expanduser()
+    if not target.is_absolute():
+        target = (root / rel)
+    target = target.resolve()
+    root_s = str(root)
+    tgt_s = str(target)
+    if tgt_s == root_s or tgt_s.startswith(root_s + "/"):
+        return None
+    return target
+
+
 def _resolve(root: Path, rel: str) -> Path:
     root = root.resolve()
-    target = (root / rel).resolve()
-    if not str(target).startswith(str(root)):
-        raise ValueError(f"path escapes project root: {rel}")
+    target = Path(rel).expanduser()
+    if not target.is_absolute():
+        target = root / rel
+    target = target.resolve()
+    root_s = str(root)
+    tgt_s = str(target)
+    if not (tgt_s == root_s or tgt_s.startswith(root_s + "/")):
+        raise PathEscapeError(rel, target, root)
     return target
 
 
@@ -105,5 +135,7 @@ def apply_edit(root: Path, path: str, old: str, new: str) -> ToolResult:
             data={"path": str(target)},
             mutating=True,
         )
+    except PathEscapeError:
+        raise
     except Exception as exc:
         return ToolResult(tool="apply_edit", status="error", error=str(exc), mutating=True)

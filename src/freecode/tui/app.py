@@ -23,7 +23,7 @@ from freecode.tools import ToolExecutor
 from freecode.tui.commands import try_handle_slash
 from freecode.tui.layout import MainLayout
 from freecode.tui.panes.transcript import TranscriptPane
-from freecode.tui.theme import APP_TITLE, build_theme
+from freecode.tui.theme import APP_TITLE, build_theme, list_theme_names, preferred_theme_name
 from freecode.tui.widgets.activity import ActivityIndicator
 from freecode.tui.widgets.approval import ApprovalModal
 from freecode.tui.widgets.cooldown import CooldownBar
@@ -51,6 +51,7 @@ class FreeCodeApp(App):
         self._busy = False
         self._pending_messages: list[str] = []
         self._last_user_prompt: str = ""
+        self._files_edited: int = 0
         self._session_store: SessionStore | None = None
         self._event_store: EventStore | None = None
         self._cooldown_store: CooldownStore | None = None
@@ -148,9 +149,10 @@ class FreeCodeApp(App):
         yield MainLayout()
 
     def on_mount(self) -> None:
-        theme = build_theme()
-        self.register_theme(theme)
-        self.theme = theme.name
+        for name in list_theme_names():
+            self.register_theme(build_theme(name=name))
+        start = preferred_theme_name()
+        self.theme = start
         self.query_one("#landing-input").focus()
         self.set_interval(0.25, self._sync_cooldown_bar)
 
@@ -188,6 +190,7 @@ class FreeCodeApp(App):
             prompt_fn=None,
             coalescer=engine.coalescer,
         )
+        self._gate.project_root = self._config.paths.project_dir
         self._tools = ToolExecutor(
             self._config.paths.project_dir,
             approval=self._config.approval,
@@ -325,6 +328,12 @@ class FreeCodeApp(App):
                     if tr.status == "denied":
                         transcript.write_error_message(f"Denied: {tr.error or tr.tool}")
                     elif tr.ok:
+                        if tr.tool in ("edit", "apply_edit", "write_file") or (
+                            tr.data and tr.data.get("path")
+                        ):
+                            if tr.mutating:
+                                self._files_edited += 1
+                                self._sync_footer()
                         out = (tr.output or "")[:800]
                         if out:
                             await transcript.stream_agent_message(
@@ -424,9 +433,21 @@ class FreeCodeApp(App):
         try:
             footer = self.query_one("#footer-stats", FooterStats)
             sid = self._session_id or ""
-            footer.set_stats(session_label=sid[:8] if sid else "")
+            footer.set_stats(
+                session_label=sid[:8] if sid else "",
+                files_edited=self._files_edited,
+            )
         except Exception:
             pass
+
+    def set_theme_name(self, name: str) -> bool:
+        names = list_theme_names()
+        if name not in names:
+            return False
+        theme = build_theme(name=name)
+        self.register_theme(theme)
+        self.theme = name
+        return True
 
 
 def run_tui(config: Config | None = None) -> int:

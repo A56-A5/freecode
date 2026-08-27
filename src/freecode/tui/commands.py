@@ -40,6 +40,8 @@ HELP_TEXT = """\
 | `/session delete <id>` | Delete a session |
 | `/session` | Show active session id |
 | `/edit` | Load last user prompt into the composer |
+| `/theme` | List color themes |
+| `/theme <name>` | Switch theme (live) |
 
 While **Cooking…**, new messages are **queued** and sent after the current turn.
 
@@ -65,6 +67,9 @@ def try_handle_slash(app: FreeCodeApp, text: str) -> CommandResult:
 
     if cmd in ("/new", "/clear"):
         return _cmd_session_new(app, "")
+
+    if cmd == "/theme":
+        return _cmd_theme(app, arg1)
 
     if cmd == "/edit":
         return _cmd_edit_last(app)
@@ -169,6 +174,29 @@ def _cmd_session_delete(app: FreeCodeApp, session_id: str) -> CommandResult:
             error=True,
         )
     return CommandResult(handled=True, message=f"Deleted session `{session_id}`")
+
+
+def _cmd_theme(app: FreeCodeApp, name: str) -> CommandResult:
+    from freecode.tui.theme import list_theme_names
+
+    names = list_theme_names()
+    if not name:
+        cur = getattr(app, "theme", "") or ""
+        lines = ["**Themes**", ""]
+        for n in names:
+            mark = "→" if n == cur else " "
+            lines.append(f"{mark} `{n}`")
+        lines.append("")
+        lines.append("Switch: `/theme <name>`")
+        return CommandResult(handled=True, message="\n".join(lines))
+    ok = app.set_theme_name(name)
+    if not ok:
+        return CommandResult(
+            handled=True,
+            message=f"Unknown theme `{name}`. Available: {', '.join(names)}",
+            error=True,
+        )
+    return CommandResult(handled=True, message=f"Theme set to `{name}`")
 
 
 def _cmd_edit_last(app: FreeCodeApp) -> CommandResult:

@@ -84,9 +84,57 @@ class ToolExecutor:
             )
 
         if isinstance(action, EditAction):
-            result = filesystem.apply_edit(
-                self.root, action.file, action.old, action.new
-            )
+            try:
+                result = filesystem.apply_edit(
+                    self.root, action.file, action.old, action.new
+                )
+            except PathEscapeError as exc:
+                if approved:
+                    # Explicit user allow for outside-root write
+                    target = Path(exc.target)
+                    try:
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        if action.old:
+                            existing = target.read_text(encoding="utf-8") if target.exists() else ""
+                            if action.old not in existing:
+                                result = ToolResult(
+                                    tool="edit",
+                                    status="error",
+                                    error="old text not found (outside-root)",
+                                    mutating=True,
+                                )
+                            else:
+                                target.write_text(
+                                    existing.replace(action.old, action.new, 1),
+                                    encoding="utf-8",
+                                )
+                                result = ToolResult(
+                                    tool="edit",
+                                    status="ok",
+                                    output=f"edited {action.file} (outside root)",
+                                    data={"path": str(target), "outside_root": True},
+                                    mutating=True,
+                                )
+                        else:
+                            target.write_text(action.new, encoding="utf-8")
+                            result = ToolResult(
+                                tool="edit",
+                                status="ok",
+                                output=f"wrote {action.file} (outside root)",
+                                data={"path": str(target), "outside_root": True},
+                                mutating=True,
+                            )
+                    except Exception as e:
+                        result = ToolResult(
+                            tool="edit", status="error", error=str(e), mutating=True
+                        )
+                else:
+                    result = ToolResult(
+                        tool="edit",
+                        status="error",
+                        error=str(exc),
+                        mutating=True,
+                    )
             self._emit_tool(result)
             if result.ok:
                 self._emit(file_changed_event(action.file))

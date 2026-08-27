@@ -57,9 +57,10 @@ class ApprovalGate:
         self.settings = settings or ApprovalSettings()
         self.prompt_fn = prompt_fn
         self.coalescer = coalescer
+        self.project_root = None
 
     def decide(self, action: Action) -> ApprovalRequest:
-        risk = classify_action(action, self.settings)
+        risk = classify_action(action, self.settings, project_root=self.project_root)
         summary = _summarize(action)
         policy: ApprovalPolicy = self.settings.default_policy
 
@@ -73,8 +74,8 @@ class ApprovalGate:
             else:
                 decision = Decision.PROMPT
 
-        # Destructive always prompts unless fully auto
-        if risk == RiskLevel.DESTRUCTIVE and policy != "auto":
+        # Destructive / outside-root always prompts unless fully auto
+        if risk in (RiskLevel.DESTRUCTIVE, RiskLevel.OUTSIDE_ROOT) and policy != "auto":
             decision = Decision.PROMPT
 
         return ApprovalRequest(

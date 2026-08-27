@@ -63,3 +63,24 @@ def test_gate_prompt_fn_deny():
         prompt_fn=lambda req: False,
     )
     assert gate.authorize(EditAction(file="a.py", old="", new="1")) is False
+
+
+def test_outside_root_classified(tmp_path):
+    from freecode.domain.actions import EditAction
+    from freecode.security.policy import RiskLevel, classify_action
+
+    action = EditAction(file="/tmp/outside_freecode_test.py", old="", new="x")
+    assert classify_action(action, project_root=tmp_path) is RiskLevel.OUTSIDE_ROOT
+
+
+def test_outside_root_prompts():
+    from freecode.config.settings import ApprovalSettings
+    from freecode.domain.actions import EditAction
+    from freecode.security import ApprovalGate, Decision
+    from freecode.security.policy import RiskLevel
+
+    gate = ApprovalGate(ApprovalSettings(default_policy="auto_readonly"))
+    gate.project_root = "/home/project"
+    req = gate.decide(EditAction(file="/etc/passwd", old="", new="nope"))
+    assert req.risk is RiskLevel.OUTSIDE_ROOT
+    assert req.decision is Decision.PROMPT

@@ -1,16 +1,5 @@
 """
-tui.theme - FreeCode's color theme, built on Textual's native Theme API.
-
-This is real configurability, not hardcoded hex values sprinkled through
-.tcss files: Theme.variables (primary, accent, success, background, ...)
-become Textual CSS variables ($primary, $accent, ...) automatically once
-registered, and every widget's DEFAULT_CSS in this package references
-those variables instead of literal colors.
-
-Users override the palette by creating `.freecode/theme.toml` in their
-project (see config/theme.toml for the template with every key). Missing
-keys fall back to DEFAULTS - a partial override (e.g. just `accent`) is
-valid and expected.
+tui.theme - FreeCode color themes (named presets + live switch).
 """
 from __future__ import annotations
 
@@ -22,10 +11,6 @@ from textual.theme import Theme
 THEME_NAME = "freecode-dark"
 APP_TITLE = "FreeCode"
 
-# Dark, low-chrome palette in the spirit of Claude Code / opencode: near-
-# black background, muted foreground, a single accent color used for both
-# "success" and "the model is doing something" (the activity dot, the
-# cooldown bar fill) so the UI doesn't juggle multiple "good" colors.
 DEFAULTS: dict[str, str] = {
     "primary": "#5f87ff",
     "secondary": "#3a3a3a",
@@ -39,7 +24,39 @@ DEFAULTS: dict[str, str] = {
     "foreground": "#d4d4d4",
 }
 
+PRESETS: dict[str, dict[str, str]] = {
+    "freecode-dark": {**DEFAULTS},
+    "freecode-light": {
+        "primary": "#3b5bdb",
+        "secondary": "#adb5bd",
+        "accent": "#0ca678",
+        "success": "#0ca678",
+        "warning": "#f08c00",
+        "error": "#e03131",
+        "background": "#f8f9fa",
+        "surface": "#ffffff",
+        "panel": "#e9ecef",
+        "foreground": "#212529",
+    },
+    "freecode-hc": {  # high contrast
+        "primary": "#ffff00",
+        "secondary": "#888888",
+        "accent": "#00ff00",
+        "success": "#00ff00",
+        "warning": "#ffaa00",
+        "error": "#ff0000",
+        "background": "#000000",
+        "surface": "#000000",
+        "panel": "#111111",
+        "foreground": "#ffffff",
+    },
+}
+
 USER_THEME_PATH = Path(".freecode") / "theme.toml"
+
+
+def list_theme_names() -> list[str]:
+    return sorted(PRESETS.keys())
 
 
 def _load_user_overrides(path: Path = USER_THEME_PATH) -> dict[str, str]:
@@ -47,27 +64,47 @@ def _load_user_overrides(path: Path = USER_THEME_PATH) -> dict[str, str]:
         return {}
     with open(path, "rb") as f:
         data = tomllib.load(f)
-    return data.get("theme", {})
+    # Support [theme] name = "..." and/or color keys
+    block = data.get("theme", {})
+    return {k: v for k, v in block.items() if k != "name" and isinstance(v, str)}
 
 
-def build_theme(overrides: dict[str, str] | None = None) -> Theme:
+def preferred_theme_name(path: Path = USER_THEME_PATH) -> str:
+    if path.exists():
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+        name = data.get("theme", {}).get("name")
+        if isinstance(name, str) and name in PRESETS:
+            return name
+    return THEME_NAME
+
+
+def build_theme(
+    name: str | None = None,
+    overrides: dict[str, str] | None = None,
+) -> Theme:
     """
-    Builds the registered Theme. `overrides` is exposed as a parameter
-    (rather than always reading the file) so tests can inject a palette
-    without touching the filesystem.
+    Build a Theme. `name` picks a preset; `overrides` merge on top
+    (or load `.freecode/theme.toml` when overrides is None).
     """
-    values = {**DEFAULTS, **(overrides if overrides is not None else _load_user_overrides())}
+    preset_name = name or preferred_theme_name()
+    base = dict(PRESETS.get(preset_name, DEFAULTS))
+    if overrides is not None:
+        base.update(overrides)
+    else:
+        base.update(_load_user_overrides())
+    dark = preset_name != "freecode-light"
     return Theme(
-        name=THEME_NAME,
-        primary=values["primary"],
-        secondary=values["secondary"],
-        accent=values["accent"],
-        success=values["success"],
-        warning=values["warning"],
-        error=values["error"],
-        background=values["background"],
-        surface=values["surface"],
-        panel=values["panel"],
-        foreground=values["foreground"],
-        dark=True,
+        name=preset_name,
+        primary=base["primary"],
+        secondary=base["secondary"],
+        accent=base["accent"],
+        success=base["success"],
+        warning=base["warning"],
+        error=base["error"],
+        background=base["background"],
+        surface=base["surface"],
+        panel=base["panel"],
+        foreground=base["foreground"],
+        dark=dark,
     )

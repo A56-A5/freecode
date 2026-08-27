@@ -94,3 +94,11 @@ async def test_search_fallback(tmp_path: Path):
     result = await ex.search("beta")
     assert result.ok
     assert "a.py" in result.output
+
+
+def test_path_escapes_root(tmp_path):
+    from freecode.tools.filesystem import path_escapes_root
+
+    assert path_escapes_root(tmp_path, "inside.py") is None
+    outside = path_escapes_root(tmp_path, "/tmp/definitely_outside_freecode")
+    assert outside is not None
