@@ -1,7 +1,6 @@
 # FreeCode
 
-A terminal-based, MCP-driven AI coding agent built using
-[ApiFreeLLM](https://apifreellm.com)'s free tier.
+A terminal-based AI coding agent built on [ApiFreeLLM](https://apifreellm.com)’s free tier — with optional [Groq](https://console.groq.com) as a second provider.
 
 No expensive API.  
 No huge model.  
@@ -9,30 +8,21 @@ No fancy infrastructure.
 
 Just a heavily rate-limited free LLM and a bunch of code trying to make it useful.
 
-ApiFreeLLM gives you roughly **one request every 20–25 seconds**, doesn't support
-native tool calling or streaming, and gives you a flat-string context. Community
-keys are also capped at about **50 requests / 24 hours** each.
+ApiFreeLLM is roughly **one request every 20–25 seconds**, no native tool calling, no streaming, flat-string context, and about **50 requests / 24h** per community key. FreeCode handles the rest: structured replies, tools, approval, context, sessions, and key/provider rotation.
 
-So FreeCode has to handle the rest — figuring out what the model wants to do,
-running tools, feeding results back, managing context, rotating keys, and
-keeping the whole thing moving.
+> If the big companies can build coding agents with huge models and expensive infrastructure, how far can I get with a free one?
 
-The idea is pretty simple:
+This isn’t trying to be another Cursor or Claude Code.  
+I’m just trying to make the shit work.
 
-> If the big companies can build coding agents with huge models and expensive
-> infrastructure, how far can I get with a free one?
-
-This isn't trying to be another Cursor or Claude Code.  
-I'm just trying to make the shit work.
-
-Full architecture and phase history: [`FreeCode.md`](./FreeCode.md).
+Architecture notes: [`FreeCode.md`](./FreeCode.md).
 
 ---
 
 ## Requirements
 
 - Python **3.11+**
-- A free key from [apifreellm.com](https://apifreellm.com) (Google sign-in)
+- At least one API key (ApiFreeLLM and/or Groq)
 
 ## Install
 
@@ -44,108 +34,97 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e .
 ```
 
-For development (tests):
+Dev / tests:
 
 ```bash
 pip install -e ".[dev]"
 pytest
 ```
 
-See also [`INSTALL.md`](./INSTALL.md).
+More detail: [`INSTALL.md`](./INSTALL.md).
 
-## Configure API keys
+## API keys
 
-Keys come from the environment only — never from TOML.
+Keys are **environment-only** (never committed in TOML).
 
 ```bash
-# Primary key
-export FREECODE_API_KEY="your-key"
-# or
-export APIFREELLM_API_KEY="your-key"
-
-# Optional: rotate when a key hits the community 50/day limit
-export FREECODE_API_KEY_2="second-key"
+# ApiFreeLLM (community)
+export FREECODE_API_KEY="your-key"       # or APIFREELLM_API_KEY
+export FREECODE_API_KEY_2="second-key"   # optional rotation (50/day per key)
 export FREECODE_API_KEY_3="third-key"
 
-# Optional second provider (OpenAI-compatible Groq free tier)
+# Groq (optional, faster — no 20–25s floor)
 export GROQ_API_KEY="gsk_..."
-export GROQ_API_KEY_2="gsk_backup..."
-# Optional default Groq model
+export GROQ_API_KEY_2="gsk_..."
 export GROQ_MODEL="llama-3.3-70b-versatile"
 ```
-
-Then:
 
 ```bash
 freecode
 ```
 
-Without a key, FreeCode still launches in **mock** mode so you can poke at the TUI.
+No key → mock mode (UI only).
 
-Optional project config (no secrets): `.freecode/config.toml`  
-Theme overrides: `.freecode/theme.toml`  
-Session DB: `.freecode/state.db` (gitignored)
+Optional project config: `.freecode/config.toml` (timeouts, approval policy, logging).  
+Theme: `.freecode/theme.toml`. Session DB: `.freecode/state.db`.
 
 ## Usage
 
-Pin context with **`@path`** in a message (e.g. `fix @src/main.py`).  
-The model can request **web lookups** via `{"type":"web","url":"..."}` or `{"type":"web","query":"..."}` — you get an **Allow / Deny** prompt first.
-
-
 | Input | Action |
 |-------|--------|
-| **Enter** | New line in the composer |
-| **Ctrl+Enter** | Send message |
+| **Enter** | New line |
+| **Ctrl+Enter** | Send |
 | **/** or **Ctrl+/** | Command palette |
 | **Ctrl+E** | Edit last prompt |
-| **Ctrl+X** | Interrupt the agent |
-| **Ctrl+C** | Quit |
+| **Ctrl+X** | Interrupt agent |
 
-### Slash commands
+Pin files in a message with **`@path`** (example: `fix @src/main.py`).
+
+### Commands
 
 | Command | What it does |
 |---------|----------------|
 | `/help` | Shortcuts + commands |
 | `/sessions` | List sessions (numbered) |
-| `/session switch 1` | Switch by list number (or short id) |
-| `/session delete 1` | Delete by list number (or short id) |
-| `/session new [title]` | New session |
+| `/session switch 1` | Switch by list # or id prefix |
+| `/session delete 1` | Delete by list # or id prefix |
 | `/new` | Fresh chat |
 | `/edit` | Load last prompt into the composer |
-| `/theme` / `/theme <name>` | List or switch themes |
-| `/provider` / `/provider <name>` | ApiFreeLLM ↔ Groq |
-| `/model` / `/model <id>` | Groq model (no 20–25s wait on Groq) |
-| `/plan` | Dry-run: propose tools only, no side effects |
+| `/plan` | Toggle dry-run (propose tools only) |
 | `/undo` | Restore files from the last edit batch |
+| `/provider` / `/provider groq` | List / force provider |
+| `/model` / `/model <id>` | Groq model (after `/provider groq`) |
+| `/theme` / `/theme <name>` | Color themes |
 
-Mutating tools (edits, shell, git writes) show an **Allow / Deny** dialog.
+Mutating tools, outside-root paths, and **web lookups** show **Allow / Deny**.
 
-## How it works (short)
+### Web lookup
 
-```
-TUI → AgentLoop → ContextEngine → Scheduler → ApiFreeLLM
-    → response repair → approval → tools → events/coalescer → SQLite
-```
+The model can request:
 
-The free tier forces:
-
-- a **scheduler** around live `delaySeconds` / 429 backoff  
-- **JSON repair** when the model mangles structured replies  
-- **tool + approval** instead of native function calling  
-- **key rotation** across `FREECODE_API_KEY`, `_2`, `_3`, … when daily quota hits  
-
-## Development
-
-```bash
-pip install -e ".[dev]"
-pytest
-freecode
+```json
+{"type": "web", "url": "https://example.com/docs"}
+{"type": "web", "query": "some search terms"}
 ```
 
-Contributions: see [`CONTRIBUTING.md`](./CONTRIBUTING.md).  
-License: [`LICENSE`](./LICENSE) (MIT).
+You approve first; FreeCode fetches the page (or a lightweight search) and feeds text back into the next turn.
 
-## Status
+### Providers
 
-Phases **ph-00 through ph-13** are implemented and tested. Details in
-`FreeCode.md` §8.21.
+- **ApiFreeLLM** — free community tier; cooldown from live `delaySeconds` (~20–25s floor).
+- **Groq** — OpenAI-compatible; no artificial inter-request floor; multi-key rotation on quota/429.
+
+Footer shows the active provider (and Groq model when relevant).
+
+## How it works
+
+```
+TUI → AgentLoop → ContextEngine → Scheduler → LLM (ApiFreeLLM or Groq)
+    → response repair → approval → tools → events → SQLite
+```
+
+Local tools: filesystem, shell, git, search, web. No native tool-calling on the free API — the model emits JSON; FreeCode repairs and executes it.
+
+## License
+
+MIT — see [`LICENSE`](./LICENSE).

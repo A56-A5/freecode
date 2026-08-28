@@ -69,3 +69,10 @@ freecode   # should open the TUI
 | “50 requests / 24h” | Add `FREECODE_API_KEY_2` (and more) |
 | “Community request timed out” | Shorter prompt; wait for cooldown |
 | `ModuleNotFoundError: httpx` | `pip install -e .` again in the venv |
+
+## Workflow extras
+
+- `@path` in messages pins file/dir context
+- `/plan` dry-run · `/undo` last edit batch
+- Web actions require Allow/Deny (`type: web`)
+- `/provider` and `/model` for ApiFreeLLM ↔ Groq
