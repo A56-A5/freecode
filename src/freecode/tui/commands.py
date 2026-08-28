@@ -40,8 +40,12 @@ HELP_TEXT = """\
 | `/session delete <n|id>` | Delete by list # or id prefix |
 | `/session` | Show active session id |
 | `/edit` | Load last user prompt into the composer |
+| `/provider` | List / switch LLM provider (apifreellm, groq) |
+| `/model` | List / switch Groq model |
 | `/theme` | List color themes |
 | `/theme <name>` | Switch theme (live) |
+| `/provider` | List LLM providers |
+| `/provider <name>` | Force provider (apifreellm / groq) |
 
 While **Cooking…**, new messages are **queued** and sent after the current turn.
 
@@ -70,6 +74,13 @@ def try_handle_slash(app: FreeCodeApp, text: str) -> CommandResult:
 
     if cmd == "/theme":
         return _cmd_theme(app, arg1)
+
+    if cmd == "/provider":
+        return _cmd_provider(app, arg1)
+
+    if cmd == "/model":
+        rest_model = (arg1 + (" " + rest if rest else "")).strip() if arg1 else ""
+        return _cmd_model(app, rest_model)
 
     if cmd == "/edit":
         return _cmd_edit_last(app)
@@ -211,7 +222,64 @@ def _cmd_session_delete(app: FreeCodeApp, session_id: str) -> CommandResult:
     return CommandResult(handled=True, message=f"Deleted session `{resolved[:8]}`")
 
 
+def _cmd_model(app: FreeCodeApp, name: str) -> CommandResult:
+    from freecode.llm.providers.groq import GROQ_MODELS, DEFAULT_MODEL
+
+    # Only meaningful for Groq today; still list for discoverability
+    cur_provider = app.active_provider()
+    cur = app.active_model() or DEFAULT_MODEL
+    if not name:
+        lines = [
+            f"**Models** (active provider: `{cur_provider}`)",
+            f"Current: `{cur}`",
+            "",
+            "Groq free-tier models:",
+        ]
+        for m in GROQ_MODELS:
+            mark = "→" if m == cur else " "
+            lines.append(f"{mark} `{m}`")
+        lines.append("")
+        lines.append("Switch: `/model llama-3.3-70b-versatile`")
+        lines.append("Tip: switch provider first with `/provider groq`")
+        return CommandResult(handled=True, message="\n".join(lines))
+    ok = app.set_model_name(name)
+    if not ok:
+        return CommandResult(
+            handled=True,
+            message=f"Could not set model `{name}` on provider `{cur_provider}`.",
+            error=True,
+        )
+    return CommandResult(
+        handled=True,
+        message=f"Model set to `{name}` on `{app.active_provider()}`",
+    )
+
+
+def _cmd_provider(app: FreeCodeApp, name: str) -> CommandResult:
+
+    names = app.list_providers()
+    if not name:
+        cur = app.active_provider()
+        lines = ["**Providers**", ""]
+        for n in names:
+            mark = "→" if n == cur else " "
+            lines.append(f"{mark} `{n}`")
+        lines.append("")
+        lines.append("Switch: `/provider apifreellm` or `/provider groq`")
+        lines.append("Keys: FREECODE_API_KEY… · GROQ_API_KEY…")
+        return CommandResult(handled=True, message="\n".join(lines))
+    ok = app.set_provider_name(name)
+    if not ok:
+        return CommandResult(
+            handled=True,
+            message=f"Unknown provider `{name}`. Available: {', '.join(names)}",
+            error=True,
+        )
+    return CommandResult(handled=True, message=f"Provider set to `{name}`")
+
+
 def _cmd_theme(app: FreeCodeApp, name: str) -> CommandResult:
+
     from freecode.tui.theme import list_theme_names
 
     names = list_theme_names()

@@ -137,7 +137,7 @@ class FreeCodeComposer(TextArea):
             text = result.strip()
             # Commands that need no further args: run immediately
             auto = text in {
-                "/help", "/sessions", "/new", "/clear", "/edit", "/session", "/theme",
+                "/help", "/sessions", "/new", "/clear", "/edit", "/session", "/theme", "/provider",
             } or (text.startswith("/") and not text.endswith(" "))
             if auto and " " not in text.strip():
                 self.post_message(MessageSubmitted(text))

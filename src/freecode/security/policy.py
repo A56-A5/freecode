@@ -16,6 +16,8 @@ from freecode.tools.filesystem import path_escapes_root
 
 
 class RiskLevel(str, Enum):
+    # OUTSIDE_ROOT applies to EditAction paths only. Shell that cds elsewhere
+    # is classified DESTRUCTIVE / WRITE and still prompts under auto_readonly.
     READONLY = "readonly"
     WRITE = "write"
     DESTRUCTIVE = "destructive"

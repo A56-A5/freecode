@@ -214,6 +214,23 @@ def _api_keys_from_env(environ: Mapping[str, str]) -> tuple[str, ...]:
 
     return tuple(keys)
 
+
+def _groq_keys_from_env(environ: Mapping[str, str]) -> tuple[str, ...]:
+    """GROQ_API_KEY, GROQ_API_KEY_2, …"""
+    keys: list[str] = []
+    primary = environ.get("GROQ_API_KEY", "").strip()
+    if primary:
+        keys.append(primary)
+    index = 2
+    while True:
+        raw = environ.get(f"GROQ_API_KEY_{index}", "").strip()
+        if not raw:
+            break
+        keys.append(raw)
+        index += 1
+    return tuple(keys)
+
+
 def apply_env_overrides(
     data: dict[str, Any],
     environ: Mapping[str, str] | None = None,
@@ -237,6 +254,8 @@ def apply_env_overrides(
         llm["endpoint"] = endpoint
     if model := env.get(ENV_MODEL, "").strip():
         llm["model"] = model
+    if groq_model := env.get("GROQ_MODEL", "").strip():
+        llm["groq_model"] = groq_model
     merged["llm"] = llm
 
     if level := env.get(ENV_LOG_LEVEL, "").strip():
@@ -252,6 +271,7 @@ def build_config(
     *,
     api_key: str | None = None,
     api_keys: tuple[str, ...] = (),
+    groq_api_keys: tuple[str, ...] = (),
 ) -> Config:
     """Map a merged dict into the typed Config model."""
     # Instance defaults — slotted dataclasses do not expose field defaults
@@ -269,6 +289,12 @@ def build_config(
     appr_raw = _section(data, "approval")
     paths_raw = _section(data, "paths")
     log_raw = _section(data, "logging")
+
+    providers_raw = llm_raw.get("providers")
+    if isinstance(providers_raw, list) and providers_raw:
+        providers = tuple(str(x) for x in providers_raw)
+    else:
+        providers = llm_d.providers
 
     llm = LLMSettings(
         endpoint=_as_str(
@@ -288,6 +314,13 @@ def build_config(
         ),
         api_key=api_key,
         api_keys=api_keys or ((api_key,) if api_key else ()),
+        providers=providers,
+        groq_model=_as_str(
+            llm_raw.get("groq_model"),
+            field="llm.groq_model",
+            default=llm_d.groq_model,
+        ),
+        groq_api_keys=groq_api_keys,
     )
 
     scheduler = SchedulerSettings(
@@ -424,11 +457,13 @@ def load_config(
     merged["paths"] = paths
 
     api_keys = _api_keys_from_env(env)
+    groq_keys = _groq_keys_from_env(env)
 
     config = build_config(
         merged,
         api_key=api_keys[0] if api_keys else None,
         api_keys=api_keys,
+        groq_api_keys=groq_keys,
     )
     if resolve:
         config = config.resolve_paths(root)

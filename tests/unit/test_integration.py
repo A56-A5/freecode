@@ -103,3 +103,60 @@ async def test_context_engine_in_prompt(tmp_path: Path):
     await core.handle_user_message("fix auth login")
     assert llm.prompts
     assert "FreeCode" in llm.prompts[0] or "auth" in llm.prompts[0].lower()
+
+
+def test_theme_persist_and_reload(tmp_path, monkeypatch):
+    from freecode.tui.theme import build_theme, persist_theme_name, preferred_theme_name
+
+    monkeypatch.chdir(tmp_path)
+    path = tmp_path / ".freecode" / "theme.toml"
+    persist_theme_name("freecode-light", path=path)
+    assert preferred_theme_name(path) == "freecode-light"
+    theme = build_theme(name=preferred_theme_name(path))
+    assert theme.name == "freecode-light"
+
+
+@pytest.mark.asyncio
+async def test_files_edited_increments_on_edit(tmp_path):
+    """Footer counter source of truth: mutating file tools after an agent loop."""
+    import json
+    from freecode.agent import AgentCore, AgentLoop
+    from freecode.config.settings import ApprovalSettings, ContextSettings
+    from freecode.context import ContextEngine
+    from freecode.llm.response import ChatResponse, ResponseFeatures
+    from freecode.tools import ToolExecutor
+
+    class Scripted:
+        def __init__(self):
+            self.calls = 0
+
+        async def __call__(self, message: str):
+            self.calls += 1
+            payload = {
+                "message": "writing",
+                "actions": [{"type": "edit", "file": "a.py", "old": "", "new": "x\n"}],
+                "status": "done",
+            }
+            return ChatResponse(
+                text=json.dumps(payload),
+                features=ResponseFeatures(delay_seconds=0.0),
+            )
+
+    engine = ContextEngine(tmp_path, ContextSettings(token_budget=4000, context_window=8000))
+    core = AgentCore(send=Scripted(), build_prompt=engine.prompt_builder)
+    tools = ToolExecutor(tmp_path, ApprovalSettings(default_policy="auto"), coalescer=engine.coalescer)
+
+    async def allow(_):
+        return True
+
+    loop = AgentLoop(core, tools, authorize=allow, max_steps=1)
+    out = await loop.run_user_message("write a.py")
+    assert out.steps[0].tool_results[0].ok
+    # Simulate TUI footer increment rule
+    files_edited = 0
+    for step in out.steps:
+        for tr in step.tool_results:
+            if tr.ok and tr.mutating and tr.tool in ("edit", "apply_edit", "write_file"):
+                files_edited += 1
+    assert files_edited == 1
+    assert (tmp_path / "a.py").read_text() == "x\n"

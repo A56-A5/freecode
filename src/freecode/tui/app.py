@@ -16,14 +16,21 @@ from freecode.config import Config, get_logger, load_config
 from freecode.context import ContextEngine
 from freecode.domain.errors import LLMError, LLMRateLimitError, LLMServerError
 from freecode.domain.state import AgentState
-from freecode.llm import ApiFreeLLMClient, Scheduler
+from freecode.llm import Scheduler
+from freecode.llm.providers import ApiFreeLLMProvider, GroqProvider, ProviderRouter
 from freecode.security import ApprovalGate, ApprovalRequest
 from freecode.storage import CooldownStore, EventStore, SessionStore
 from freecode.tools import ToolExecutor
 from freecode.tui.commands import try_handle_slash
 from freecode.tui.layout import MainLayout
 from freecode.tui.panes.transcript import TranscriptPane
-from freecode.tui.theme import APP_TITLE, build_theme, list_theme_names, preferred_theme_name
+from freecode.tui.theme import (
+    APP_TITLE,
+    build_theme,
+    list_theme_names,
+    persist_theme_name,
+    preferred_theme_name,
+)
 from freecode.tui.widgets.activity import ActivityIndicator
 from freecode.tui.widgets.approval import ApprovalModal
 from freecode.tui.widgets.cooldown import CooldownBar
@@ -52,6 +59,7 @@ class FreeCodeApp(App):
         self._pending_messages: list[str] = []
         self._last_user_prompt: str = ""
         self._files_edited: int = 0
+        self._router: ProviderRouter | None = None
         self._session_store: SessionStore | None = None
         self._event_store: EventStore | None = None
         self._cooldown_store: CooldownStore | None = None
@@ -177,7 +185,7 @@ class FreeCodeApp(App):
                     pass
 
     def _build_agent(self, state: AgentState | None = None) -> AgentCore:
-        client = ApiFreeLLMClient(self._config.llm)
+        self._router = self._build_router()
         engine = ContextEngine(
             root=self._config.paths.project_dir,
             settings=self._config.context,
@@ -198,13 +206,19 @@ class FreeCodeApp(App):
         )
 
         async def send(message: str):
+            assert self._router is not None
             await self._scheduler.wait_until_ready()
             self._sync_cooldown_bar()
-            async with client:
-                chat = await client.send(message)
-            self._scheduler.record_success(chat.delay_seconds)
+            chat = await self._router.send(message)
+            # ApiFreeLLM needs 20–25s floor; Groq does not.
+            apply_floor = self._router.active_name == "apifreellm"
+            self._scheduler.record_success(
+                chat.delay_seconds if apply_floor else 0.0,
+                apply_floor=apply_floor,
+            )
             self._sync_cooldown_bar()
             self._persist_cooldown()
+            self._sync_footer()
             return chat
 
         return AgentCore(
@@ -212,6 +226,45 @@ class FreeCodeApp(App):
             state=state if state is not None else AgentState(),
             build_prompt=engine.prompt_builder,
         )
+
+    def _build_router(self) -> ProviderRouter:
+        s = self._config.llm
+        providers = []
+        order = s.providers or ("apifreellm", "groq")
+        pref_name, pref_model = self._load_provider_prefs()
+        groq_model = pref_model or s.groq_model
+        for name in order:
+            if name == "apifreellm":
+                providers.append(ApiFreeLLMProvider(s))
+            elif name == "groq":
+                providers.append(
+                    GroqProvider(
+                        api_keys=s.groq_api_keys,
+                        model=groq_model,
+                        timeout_seconds=s.timeout_seconds,
+                    )
+                )
+        router = ProviderRouter(providers)
+        if pref_name:
+            router.force(pref_name)
+        return router
+
+    def _load_provider_prefs(self) -> tuple[str | None, str | None]:
+        try:
+            import tomllib
+            from pathlib import Path
+
+            path = Path(self._config.paths.runtime_dir) / "provider.toml"
+            if not path.exists():
+                return None, None
+            with open(path, "rb") as f:
+                data = tomllib.load(f)
+            block = data.get("provider") or {}
+            name = block.get("name") if isinstance(block.get("name"), str) else None
+            model = block.get("model") if isinstance(block.get("model"), str) else None
+            return name or None, model or None
+        except Exception:
+            return None, None
 
     async def _ask_approval(self, request: ApprovalRequest) -> bool:
         return await self.push_screen_wait(ApprovalModal(request))
@@ -269,7 +322,7 @@ class FreeCodeApp(App):
         transcript.write_user_message(text)
         self._last_user_prompt = text
 
-        if not self._config.llm.api_key:
+        if not (self._config.llm.api_keys or self._config.llm.groq_api_keys):
             self._busy = True
             self.run_worker(self._mock_reply(text), exclusive=True)
             return
@@ -433,7 +486,9 @@ class FreeCodeApp(App):
         try:
             footer = self.query_one("#footer-stats", FooterStats)
             sid = self._session_id or ""
+            provider = self.active_provider() if self._router else ""
             footer.set_stats(
+                mode_label=f"freecode/{provider}" if provider else "freecode",
                 session_label=sid[:8] if sid else "",
                 files_edited=self._files_edited,
             )
@@ -447,7 +502,57 @@ class FreeCodeApp(App):
         theme = build_theme(name=name)
         self.register_theme(theme)
         self.theme = name
+        try:
+            persist_theme_name(name)
+        except Exception:
+            log.exception("failed to persist theme name")
         return True
+
+    def set_provider_name(self, name: str) -> bool:
+        if self._router is None:
+            self._router = self._build_router()
+        ok = self._router.force(name)
+        if ok:
+            self._sync_footer()
+        return ok
+
+    def list_providers(self) -> list[str]:
+        if self._router is None:
+            self._router = self._build_router()
+        return self._router.names()
+
+    def active_provider(self) -> str:
+        if self._router is None:
+            return "none"
+        return self._router.active_name
+
+    def set_model_name(self, model: str) -> bool:
+        if self._router is None:
+            self._router = self._build_router()
+        ok = self._router.set_model(model)
+        if ok:
+            self._persist_provider_prefs()
+            self._sync_footer()
+        return ok
+
+    def active_model(self) -> str | None:
+        if self._router is None:
+            return None
+        return self._router.active_model()
+
+    def _persist_provider_prefs(self) -> None:
+        try:
+            from pathlib import Path
+            path = Path(self._config.paths.runtime_dir) / "provider.toml"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            model = self.active_model() or ""
+            provider = self.active_provider()
+            path.write_text(
+                f'[provider]\nname = "{provider}"\nmodel = "{model}"\n',
+                encoding="utf-8",
+            )
+        except Exception:
+            log.exception("failed to persist provider prefs")
 
 
 def run_tui(config: Config | None = None) -> int:

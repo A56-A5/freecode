@@ -27,6 +27,13 @@ class LLMSettings:
     # Multiple API keys, populated only from environment variables.
     api_keys: tuple[str, ...] = ()
 
+    # Ordered provider names: apifreellm, groq
+    providers: tuple[str, ...] = ("apifreellm", "groq")
+
+    # Groq (env-only keys)
+    groq_model: str = "llama-3.1-8b-instant"
+    groq_api_keys: tuple[str, ...] = ()
+
 
 @dataclass(frozen=True, slots=True)
 class SchedulerSettings:

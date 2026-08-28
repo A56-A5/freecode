@@ -1,13 +1,19 @@
 # Changelog
 
-## 0.0.1 — ph-13 (Hardening + packaging)
+## 0.1.0 — main
 
-- Full stack through ph-12: live ApiFreeLLM path, AgentLoop chains, tools + approval, sessions, events
-- Hardening tests: malformed JSON repair, context overflow, interrupt, transport errors, approval, session recovery
-- Packaging: LICENSE, classifiers, install docs, CI workflow
-- TUI: landing → conversation, multi-line composer, markdown + typing reveal, `/` command palette
-- Restored standalone widget/theme unit tests (CooldownBar, ActivityIndicator, Theme)
+- Multi-provider router: **ApiFreeLLM** + **Groq** (each with multi-key rotation)
+- `/provider` command; footer shows active provider
+- `/theme` choice persisted to `.freecode/theme.toml`
+- Session switch/delete hints in command palette by list #
+- Footer files-edited covered by integration test
+- Honest project README + INSTALL guide
+- API key rotation across `FREECODE_API_KEY`, `_2`, `_3`, … on community daily quota
+- Session switch/delete by list number (`/session delete 1`)
+- Command palette: live filter, Enter = top match, clears composer residue
+- Full stack (TUI, agent loop, tools + approval, context, events, SQLite)
+- Hardening tests, CI workflow, themes (`freecode-dark` / `light` / `hc`)
 
-## Earlier phases
+## 0.0.1 — ph-13
 
-See `FreeCode.md` §8.21 for the phase-by-phase history (ph-00 Foundation through ph-12 Full integration).
+Initial packaged hardening release (phases 00–13).

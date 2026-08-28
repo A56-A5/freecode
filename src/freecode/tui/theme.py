@@ -108,3 +108,24 @@ def build_theme(
         foreground=base["foreground"],
         dark=dark,
     )
+
+
+def persist_theme_name(name: str, path: Path = USER_THEME_PATH) -> None:
+    """Write ``name = "..."`` under [theme] so the choice survives restart."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing: dict = {}
+    if path.exists():
+        try:
+            with open(path, "rb") as f:
+                existing = tomllib.load(f)
+        except Exception:
+            existing = {}
+    block = dict(existing.get("theme") or {})
+    block["name"] = name
+    # Preserve other color overrides as strings
+    lines = ["# FreeCode theme — managed; edit colors or name as needed", "[theme]"]
+    for k, v in block.items():
+        if isinstance(v, str):
+            lines.append(f'{k} = "{v}"')
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")

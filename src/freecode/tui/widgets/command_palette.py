@@ -41,6 +41,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec("/edit", "", "Load last user prompt into the composer"),
     CommandSpec("/clear", "", "Alias for /new"),
     CommandSpec("/theme", "[name]", "List or switch color themes"),
+    CommandSpec("/provider", "[name]", "List or force LLM provider"),
+    CommandSpec("/model", "[name]", "List or switch Groq model"),
 )
 
 
@@ -123,10 +125,41 @@ class CommandPalette(ModalScreen[str | None]):
         )
 
     def on_mount(self) -> None:
+        self._inject_session_specs()
         self.call_after_refresh(self._rebuild_list)
         q = self.query_one("#palette-query", Input)
         q.focus()
         q.cursor_position = len(q.value)
+
+    def _inject_session_specs(self) -> None:
+        """When query looks like /session switch|delete, list #1.. from store."""
+        global COMMAND_SPECS
+        try:
+            store = getattr(self.app, "session_store", None)
+            if store is None:
+                return
+            rows = store.list_sessions(limit=12)
+            extras = []
+            for i, s in enumerate(rows, start=1):
+                title = (s.title or s.goal or "session")[:28]
+                extras.append(
+                    CommandSpec(
+                        f"/session switch {i}",
+                        "",
+                        f"{title} ({s.id[:8]})",
+                    )
+                )
+                extras.append(
+                    CommandSpec(
+                        f"/session delete {i}",
+                        "",
+                        f"delete {title}",
+                    )
+                )
+            # prepend dynamic specs for this palette instance only
+            self._dynamic = extras
+        except Exception:
+            self._dynamic = []
 
     def _rebuild_list(self) -> None:
         self._rebuild_token += 1
@@ -135,7 +168,16 @@ class CommandPalette(ModalScreen[str | None]):
             query = self.query_one("#palette-query", Input).value
         except Exception:
             query = self._prefix
-        self._specs = filter_commands(query)
+        base = filter_commands(query)
+        dyn = getattr(self, '_dynamic', [])
+        q = (query or '').lower()
+        if 'switch' in q or 'delete' in q or q.startswith('/session'):
+            extra = [c for c in dyn if c.name.startswith(q.rstrip()) or q.rstrip() in c.name]
+            # merge unique
+            seen = {c.name for c in base}
+            self._specs = base + [c for c in extra if c.name not in seen]
+        else:
+            self._specs = base
 
         lv = self.query_one("#palette-list", ListView)
         for child in list(lv.children):

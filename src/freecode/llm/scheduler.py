@@ -187,14 +187,26 @@ class Scheduler:
 
     # ── mutations ────────────────────────────────────────────────────
 
-    def record_success(self, delay_seconds: float | None = None) -> None:
+    def record_success(
+        self,
+        delay_seconds: float | None = None,
+        *,
+        apply_floor: bool = True,
+    ) -> None:
         """
         Successful response: enter normal cooldown.
 
-        Uses max(config floor, live delaySeconds). Missing delay falls
-        back to the floor alone.
+        Uses max(config floor, live delaySeconds) when apply_floor is True
+        (ApiFreeLLM). When apply_floor is False (e.g. Groq), no artificial
+        20–25s wait — only real Retry-After backoff on 429/5xx.
         """
         self._consecutive_failures = 0
+        if not apply_floor:
+            self._mode = TimerMode.IDLE
+            self._ready_at = 0.0
+            self._total = 0.0
+            log.debug("success without cooldown floor (fast provider)")
+            return
         floor = self._settings.cooldown_floor_seconds
         if delay_seconds is None or delay_seconds < 0:
             total = floor
