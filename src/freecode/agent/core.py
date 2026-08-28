@@ -68,10 +68,16 @@ def default_prompt(state: AgentState, user_text: str) -> str:
     parts.append(f"User: {user_text}")
     parts.append(
         "Respond helpfully as JSON only: "
-        '{"message":"...","actions":[],"status":"continue|done|needs_input",'
+        '{"message":"...","actions":[...],"status":"continue|done|needs_input",'
         '"context_update":{"facts":[]}}. '
+        "Action types: "
+        '{"type":"edit","file":"...","old":"...","new":"..."}, '
+        '{"type":"command","command":"...","reason":"..."}, '
+        '{"type":"web","url":"https://..."} or {"type":"web","query":"search terms"} '
+        "(web lookups need user approval). "
         "Put FULL answers and complete code in message (markdown fences). "
-        "Never omit code you claim to provide. Do not invent file paths."
+        "Never omit code you claim to provide. Do not invent file paths. "
+        "If the user message includes @path pins, treat those files as authoritative context."
     )
     return "\n\n".join(parts)
 

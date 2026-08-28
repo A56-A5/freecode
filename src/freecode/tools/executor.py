@@ -11,8 +11,9 @@ from pathlib import Path
 
 from freecode.config.logging import get_logger
 from freecode.config.settings import ApprovalPolicy, ApprovalSettings
-from freecode.domain.actions import Action, CommandAction, EditAction
-from freecode.tools import filesystem, git, search, shell
+from freecode.domain.actions import Action, CommandAction, EditAction, WebAction
+from freecode.tools import filesystem, git, search, shell, web
+from freecode.tools.filesystem import PathEscapeError
 from freecode.domain.events import command_finished_event, command_started_event, file_changed_event, tool_result_event
 from freecode.tools.results import ToolResult
 from typing import TYPE_CHECKING
@@ -67,6 +68,9 @@ class ToolExecutor:
         self.root = Path(root).resolve()
         self.approval = approval or ApprovalSettings()
         self.coalescer = coalescer
+        self.plan_mode = False
+        self._undo_stack: list[list[tuple[Path, str | None]]] = []  # batches of (path, old_text|None)
+        self._current_batch: list[tuple[Path, str | None]] = []
 
     async def execute_action(
         self,
@@ -83,7 +87,16 @@ class ToolExecutor:
                 mutating=True,
             )
 
+        if self.plan_mode:
+            return ToolResult(
+                tool="plan",
+                status="ok",
+                output=f"[plan] skipped: {action!r}",
+                data={"planned": True, "action": getattr(action, "type", "?")},
+            )
+
         if isinstance(action, EditAction):
+            snap = self._snapshot_before_edit(action.file)
             try:
                 result = filesystem.apply_edit(
                     self.root, action.file, action.old, action.new
@@ -137,6 +150,7 @@ class ToolExecutor:
                     )
             self._emit_tool(result)
             if result.ok:
+                self._current_batch.append(snap)
                 self._emit(file_changed_event(action.file))
             return result
         if isinstance(action, CommandAction):
@@ -157,6 +171,21 @@ class ToolExecutor:
             code = int((result.data or {}).get("exit_code", 1))
             self._emit(command_finished_event(action.command, code, result.output))
             return out
+
+        if isinstance(action, WebAction):
+            if not approved and self.approval.default_policy != "auto":
+                return ToolResult(
+                    tool="web_fetch",
+                    status="error",
+                    error="web lookup requires approval",
+                )
+            if action.url:
+                result = web.fetch_url(action.url)
+            else:
+                result = web.web_search_duckduckgo(action.query)
+            self._emit_tool(result)
+            return result
+
         return ToolResult(
             tool="unknown",
             status="error",
@@ -222,3 +251,49 @@ class ToolExecutor:
                 mutating=result.mutating,
             )
         )
+
+    def begin_action_batch(self) -> None:
+        self._current_batch = []
+
+    def commit_undo_batch(self) -> None:
+        if self._current_batch:
+            self._undo_stack.append(self._current_batch)
+            # keep last 10 batches
+            self._undo_stack = self._undo_stack[-10:]
+        self._current_batch = []
+
+    def undo_last_batch(self) -> ToolResult:
+
+        """Restore files from the last mutating batch (edits/writes)."""
+        if not self._undo_stack:
+            return ToolResult(tool="undo", status="error", error="nothing to undo")
+        batch = self._undo_stack.pop()
+        restored: list[str] = []
+        errors: list[str] = []
+        for path, old in batch:
+            try:
+                if old is None:
+                    if path.exists():
+                        path.unlink()
+                        restored.append(f"removed {path}")
+                else:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(old, encoding="utf-8")
+                    restored.append(str(path))
+            except Exception as exc:
+                errors.append(f"{path}: {exc}")
+        if errors and not restored:
+            return ToolResult(tool="undo", status="error", error="; ".join(errors))
+        msg = "Restored:\n" + "\n".join(restored)
+        if errors:
+            msg += "\nErrors:\n" + "\n".join(errors)
+        return ToolResult(tool="undo", status="ok", output=msg, mutating=True)
+
+    def _snapshot_before_edit(self, rel: str) -> tuple[Path, str | None]:
+        path = (self.root / rel).resolve() if not Path(rel).is_absolute() else Path(rel)
+        try:
+            if path.exists() and path.is_file():
+                return path, path.read_text(encoding="utf-8")
+        except Exception:
+            pass
+        return path, None

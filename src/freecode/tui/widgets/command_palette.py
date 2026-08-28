@@ -43,6 +43,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec("/theme", "[name]", "List or switch color themes"),
     CommandSpec("/provider", "[name]", "List or force LLM provider"),
     CommandSpec("/model", "[name]", "List or switch Groq model"),
+    CommandSpec("/plan", "", "Toggle dry-run plan mode"),
+    CommandSpec("/undo", "", "Undo last file edit batch"),
 )
 
 

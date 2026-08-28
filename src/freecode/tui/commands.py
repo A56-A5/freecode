@@ -42,6 +42,8 @@ HELP_TEXT = """\
 | `/edit` | Load last user prompt into the composer |
 | `/provider` | List / switch LLM provider (apifreellm, groq) |
 | `/model` | List / switch Groq model |
+| `/plan` | Toggle dry-run plan mode |
+| `/undo` | Restore files from last edit batch |
 | `/theme` | List color themes |
 | `/theme <name>` | Switch theme (live) |
 | `/provider` | List LLM providers |
@@ -77,6 +79,12 @@ def try_handle_slash(app: FreeCodeApp, text: str) -> CommandResult:
 
     if cmd == "/provider":
         return _cmd_provider(app, arg1)
+
+    if cmd in ("/plan", "/dry-run", "/dryrun"):
+        return _cmd_plan(app)
+
+    if cmd == "/undo":
+        return _cmd_undo(app)
 
     if cmd == "/model":
         rest_model = (arg1 + (" " + rest if rest else "")).strip() if arg1 else ""
@@ -222,12 +230,34 @@ def _cmd_session_delete(app: FreeCodeApp, session_id: str) -> CommandResult:
     return CommandResult(handled=True, message=f"Deleted session `{resolved[:8]}`")
 
 
+def _cmd_plan(app: FreeCodeApp) -> CommandResult:
+    on = app.toggle_plan_mode()
+    if on:
+        return CommandResult(
+            handled=True,
+            message="**Plan mode ON** — tools are simulated only (no disk/shell/web side effects). `/plan` again to leave.",
+        )
+    return CommandResult(handled=True, message="**Plan mode OFF** — tools apply normally (with approval).")
+
+
+def _cmd_undo(app: FreeCodeApp) -> CommandResult:
+    msg = app.undo_last_tools()
+    return CommandResult(handled=True, message=f"**Undo**\n\n{msg}")
+
+
 def _cmd_model(app: FreeCodeApp, name: str) -> CommandResult:
+
     from freecode.llm.providers.groq import GROQ_MODELS, DEFAULT_MODEL
 
     # Only meaningful for Groq today; still list for discoverability
     cur_provider = app.active_provider()
     cur = app.active_model() or DEFAULT_MODEL
+    if cur_provider != "groq" and name:
+        return CommandResult(
+            handled=True,
+            message=f"Switch to Groq first: `/provider groq` (current: `{cur_provider}`).",
+            error=True,
+        )
     if not name:
         lines = [
             f"**Models** (active provider: `{cur_provider}`)",

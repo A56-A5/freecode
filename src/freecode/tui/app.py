@@ -18,6 +18,7 @@ from freecode.domain.errors import LLMError, LLMRateLimitError, LLMServerError
 from freecode.domain.state import AgentState
 from freecode.llm import Scheduler
 from freecode.llm.providers import ApiFreeLLMProvider, GroqProvider, ProviderRouter
+from freecode.context.mentions import expand_mentions
 from freecode.security import ApprovalGate, ApprovalRequest
 from freecode.storage import CooldownStore, EventStore, SessionStore
 from freecode.tools import ToolExecutor
@@ -59,6 +60,7 @@ class FreeCodeApp(App):
         self._pending_messages: list[str] = []
         self._last_user_prompt: str = ""
         self._files_edited: int = 0
+        self._plan_mode: bool = False
         self._router: ProviderRouter | None = None
         self._session_store: SessionStore | None = None
         self._event_store: EventStore | None = None
@@ -367,7 +369,19 @@ class FreeCodeApp(App):
                 authorize=authorize,
                 max_steps=5,
             )
-            outcome = await loop.run_user_message(text)
+            pinned = expand_mentions(self._config.paths.project_dir, text)
+            send_text = text
+            if pinned:
+                send_text = text + "\n\n" + pinned
+                await transcript.stream_agent_message(
+                    "**Pinned context** from `@…` mentions (not sent as a separate turn)."
+                )
+            if self._tools is not None:
+                self._tools.plan_mode = self._plan_mode
+                self._tools.begin_action_batch()
+            outcome = await loop.run_user_message(send_text)
+            if self._tools is not None:
+                self._tools.commit_undo_batch()
 
             for step in outcome.steps:
                 result = step.turn
@@ -487,13 +501,38 @@ class FreeCodeApp(App):
             footer = self.query_one("#footer-stats", FooterStats)
             sid = self._session_id or ""
             provider = self.active_provider() if self._router else ""
+            model = self.active_model() if provider == "groq" else None
+            if self._plan_mode:
+                mode = "plan"
+            elif provider == "groq" and model:
+                mode = f"groq/{model.split('/')[-1][:18]}"
+            elif provider:
+                mode = provider
+            else:
+                mode = "freecode"
             footer.set_stats(
-                mode_label=f"freecode/{provider}" if provider else "freecode",
+                mode_label=mode,
                 session_label=sid[:8] if sid else "",
                 files_edited=self._files_edited,
             )
         except Exception:
             pass
+
+    def toggle_plan_mode(self) -> bool:
+        self._plan_mode = not self._plan_mode
+        if self._tools is not None:
+            self._tools.plan_mode = self._plan_mode
+        self._sync_footer()
+        return self._plan_mode
+
+    def undo_last_tools(self) -> str:
+        if self._tools is None:
+            return "Tools not ready."
+        result = self._tools.undo_last_batch()
+        if result.ok:
+            self._files_edited = max(0, self._files_edited - 1)
+            self._sync_footer()
+        return result.output or result.error or ("ok" if result.ok else "failed")
 
     def set_theme_name(self, name: str) -> bool:
         names = list_theme_names()

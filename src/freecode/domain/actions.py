@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, Mapping
 
-ActionType = Literal["edit", "command"]
+ActionType = Literal["edit", "command", "web"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,7 +46,25 @@ class CommandAction:
         }
 
 
-Action = EditAction | CommandAction
+@dataclass(frozen=True, slots=True)
+class WebAction:
+    """Fetch a URL (or search query) — always approval-gated."""
+
+    url: str = ""
+    query: str = ""
+    reason: str = ""
+    type: Literal["web"] = "web"
+
+    def to_dict(self) -> dict[str, str]:
+        d = {"type": "web", "reason": self.reason}
+        if self.url:
+            d["url"] = self.url
+        if self.query:
+            d["query"] = self.query
+        return d
+
+
+Action = EditAction | CommandAction | WebAction
 
 
 def parse_action(data: Mapping[str, Any]) -> Action:
@@ -77,4 +95,17 @@ def parse_action(data: Mapping[str, Any]) -> Action:
         if not isinstance(reason, str):
             reason = str(reason) if reason is not None else ""
         return CommandAction(command=command.strip(), reason=reason)
+    if raw_type in ("web", "web_fetch", "fetch", "lookup"):
+        url = data.get("url") or data.get("href") or ""
+        query = data.get("query") or data.get("q") or ""
+        if not isinstance(url, str):
+            url = str(url) if url else ""
+        if not isinstance(query, str):
+            query = str(query) if query else ""
+        if not url.strip() and not query.strip():
+            raise ValueError("web action requires 'url' or 'query'")
+        reason = data.get("reason", "")
+        if not isinstance(reason, str):
+            reason = str(reason) if reason is not None else ""
+        return WebAction(url=url.strip(), query=query.strip(), reason=reason)
     raise ValueError(f"unknown action type: {raw_type!r}")

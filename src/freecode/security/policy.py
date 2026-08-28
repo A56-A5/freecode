@@ -10,7 +10,7 @@ from enum import Enum
 from pathlib import Path
 
 from freecode.config.settings import ApprovalSettings
-from freecode.domain.actions import Action, CommandAction, EditAction
+from freecode.domain.actions import Action, CommandAction, EditAction, WebAction
 from freecode.tools.executor import is_readonly_command
 from freecode.tools.filesystem import path_escapes_root
 
@@ -23,6 +23,7 @@ class RiskLevel(str, Enum):
     DESTRUCTIVE = "destructive"
     GIT_MUTATION = "git_mutation"
     OUTSIDE_ROOT = "outside_root"
+    WEB = "web"
 
 
 _DESTRUCTIVE_RE = re.compile(
@@ -59,6 +60,8 @@ def classify_action(
     *,
     project_root: Path | str | None = None,
 ) -> RiskLevel:
+    if isinstance(action, WebAction):
+        return RiskLevel.WEB
     if isinstance(action, EditAction):
         if project_root is not None and path_escapes_root(Path(project_root), action.file):
             return RiskLevel.OUTSIDE_ROOT
@@ -78,4 +81,5 @@ def risk_label(level: RiskLevel) -> str:
         RiskLevel.DESTRUCTIVE: "destructive",
         RiskLevel.GIT_MUTATION: "git mutation",
         RiskLevel.OUTSIDE_ROOT: "outside project root",
+        RiskLevel.WEB: "web lookup",
     }[level]

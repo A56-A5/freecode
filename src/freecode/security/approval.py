@@ -75,7 +75,7 @@ class ApprovalGate:
                 decision = Decision.PROMPT
 
         # Destructive / outside-root always prompts unless fully auto
-        if risk in (RiskLevel.DESTRUCTIVE, RiskLevel.OUTSIDE_ROOT) and policy != "auto":
+        if risk in (RiskLevel.DESTRUCTIVE, RiskLevel.OUTSIDE_ROOT, RiskLevel.WEB) and policy != "auto":
             decision = Decision.PROMPT
 
         return ApprovalRequest(

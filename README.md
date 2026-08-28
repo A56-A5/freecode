@@ -88,6 +88,10 @@ Session DB: `.freecode/state.db` (gitignored)
 
 ## Usage
 
+Pin context with **`@path`** in a message (e.g. `fix @src/main.py`).  
+The model can request **web lookups** via `{"type":"web","url":"..."}` or `{"type":"web","query":"..."}` — you get an **Allow / Deny** prompt first.
+
+
 | Input | Action |
 |-------|--------|
 | **Enter** | New line in the composer |
@@ -111,6 +115,8 @@ Session DB: `.freecode/state.db` (gitignored)
 | `/theme` / `/theme <name>` | List or switch themes |
 | `/provider` / `/provider <name>` | ApiFreeLLM ↔ Groq |
 | `/model` / `/model <id>` | Groq model (no 20–25s wait on Groq) |
+| `/plan` | Dry-run: propose tools only, no side effects |
+| `/undo` | Restore files from the last edit batch |
 
 Mutating tools (edits, shell, git writes) show an **Allow / Deny** dialog.
 
