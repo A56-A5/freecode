@@ -31,7 +31,7 @@ class LLMSettings:
     providers: tuple[str, ...] = ("apifreellm", "groq")
 
     # Groq (env-only keys)
-    groq_model: str = "llama-3.1-8b-instant"
+    groq_model: str = "openai/gpt-oss-20b"
     groq_api_keys: tuple[str, ...] = ()
 
 

@@ -25,20 +25,21 @@ from freecode.llm.response import ChatResponse, ResponseFeatures
 log = get_logger(__name__)
 
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
-DEFAULT_MODEL = "llama-3.1-8b-instant"
+DEFAULT_MODEL = "openai/gpt-oss-20b"
 
 # Common Groq free-tier chat models (names as of Groq console / docs).
 GROQ_MODELS: tuple[str, ...] = (
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+    "moonshotai/kimi-k2-instruct",
+    "qwen/qwen3-32b",
+    "groq/compound",
+    "groq/compound-mini",
+    # Often Enterprise-only on free keys (404):
     "llama-3.1-8b-instant",
     "llama-3.3-70b-versatile",
-    "llama-3.1-70b-versatile",
-    "meta-llama/llama-4-scout-17b-16e-instruct",
-    "meta-llama/llama-4-maverick-17b-128e-instruct",
-    "qwen/qwen3-32b",
-    "gemma2-9b-it",
-    "mistral-saba-24b",
-    "moonshotai/kimi-k2-instruct",
 )
+
 
 
 def _is_groq_quota_error(message: str) -> bool:
@@ -176,8 +177,14 @@ class GroqProvider:
                 )
             if response.status_code == 401:
                 raise LLMAuthError(msg, status_code=401)
-            if response.status_code == 400:
-                raise LLMBadRequestError(msg, status_code=400)
+            if response.status_code in (400, 404):
+                hint = ""
+                if "does not exist" in msg.lower() or response.status_code == 404:
+                    hint = (
+                        " Try `/model openai/gpt-oss-20b` — many Llama IDs are "
+                        "Enterprise-only on free Groq keys. `/model` lists options."
+                    )
+                raise LLMBadRequestError(msg + hint, status_code=response.status_code)
             if response.status_code == 429:
                 raise LLMRateLimitError(
                     msg,

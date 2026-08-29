@@ -56,7 +56,7 @@ export FREECODE_API_KEY_3="third-key"
 # Groq (optional, faster — no 20–25s floor)
 export GROQ_API_KEY="gsk_..."
 export GROQ_API_KEY_2="gsk_..."
-export GROQ_MODEL="llama-3.3-70b-versatile"
+export GROQ_MODEL="openai/gpt-oss-20b"
 ```
 
 ```bash
