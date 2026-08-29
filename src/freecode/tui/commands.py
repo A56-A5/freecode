@@ -144,15 +144,16 @@ def _cmd_sessions(app: FreeCodeApp) -> CommandResult:
     lines = ["**Sessions**", ""]
     for i, s in enumerate(rows, start=1):
         mark = "→" if s.id == active else " "
-        title = (s.title or s.goal or "(untitled)").replace("\n", " ")[:40]
+        title = (s.title or s.goal or "(untitled)").replace("\n", " ")[:48]
         when = _fmt_ts(s.updated_at)
         short = s.id[:8]
-        lines.append(
-            f"{mark} **#{i}** `{short}` · {title} · turn {s.turn} · {s.phase} · {when}"
-        )
-    lines.append("")
-    lines.append("Switch: `/session switch 1` or `/session switch <id>`")
-    lines.append("Delete: `/session delete 1` or `/session delete <id>`")
+        # Blank line between entries so Markdown does not collapse into one line
+        lines.append(f"{mark} **#{i}** `{short}`")
+        lines.append(f"    {title}")
+        lines.append(f"    turn {s.turn} · {s.phase} · {when}")
+        lines.append("")
+    lines.append("Switch: `/session switch 1`")
+    lines.append("Delete: `/session delete 1`")
     lines.append("New: `/new`")
     return CommandResult(handled=True, message="\n".join(lines))
 
@@ -260,17 +261,16 @@ def _cmd_model(app: FreeCodeApp, name: str) -> CommandResult:
         )
     if not name:
         lines = [
-            f"**Models** (active provider: `{cur_provider}`)",
+            f"**Models** (provider: `{cur_provider}`)",
             f"Current: `{cur}`",
             "",
-            "Groq free-tier models:",
         ]
         for m in GROQ_MODELS:
             mark = "→" if m == cur else " "
             lines.append(f"{mark} `{m}`")
-        lines.append("")
-        lines.append("Switch: `/model llama-3.3-70b-versatile`")
-        lines.append("Tip: switch provider first with `/provider groq`")
+            lines.append("")
+        lines.append("Switch: `/model openai/gpt-oss-20b`")
+        lines.append("Tip: `/provider groq` first if needed")
         return CommandResult(handled=True, message="\n".join(lines))
     ok = app.set_model_name(name)
     if not ok:
@@ -294,9 +294,9 @@ def _cmd_provider(app: FreeCodeApp, name: str) -> CommandResult:
         for n in names:
             mark = "→" if n == cur else " "
             lines.append(f"{mark} `{n}`")
-        lines.append("")
+            lines.append("")
         lines.append("Switch: `/provider apifreellm` or `/provider groq`")
-        lines.append("Keys: FREECODE_API_KEY… · GROQ_API_KEY…")
+        lines.append("Keys: `FREECODE_API_KEY` · `GROQ_API_KEY`")
         return CommandResult(handled=True, message="\n".join(lines))
     ok = app.set_provider_name(name)
     if not ok:
@@ -319,6 +319,7 @@ def _cmd_theme(app: FreeCodeApp, name: str) -> CommandResult:
         for n in names:
             mark = "→" if n == cur else " "
             lines.append(f"{mark} `{n}`")
+            lines.append("")
         lines.append("")
         lines.append("Switch: `/theme <name>`")
         return CommandResult(handled=True, message="\n".join(lines))

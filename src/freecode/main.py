@@ -26,10 +26,10 @@ def run() -> int:
         config.context.token_budget,
         config.approval.default_policy,
     )
-    if config.llm.api_key:
+    if config.llm.api_keys or config.llm.groq_api_keys:
         log.info("live ApiFreeLLM mode (API key present)")
     else:
-        log.info("mock TUI mode (set FREECODE_API_KEY for live replies)")
+        log.warning("no API key — set FREECODE_API_KEY or GROQ_API_KEY")
 
     from freecode.tui.app import run_tui
 

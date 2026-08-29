@@ -325,8 +325,7 @@ class FreeCodeApp(App):
         self._last_user_prompt = text
 
         if not (self._config.llm.api_keys or self._config.llm.groq_api_keys):
-            self._busy = True
-            self.run_worker(self._mock_reply(text), exclusive=True)
+            self.run_worker(self._no_api_key_reply(), exclusive=True)
             return
 
         if self._agent is None:
@@ -335,16 +334,17 @@ class FreeCodeApp(App):
         self._busy = True
         self.run_worker(self._live_reply(text), exclusive=True)
 
-    async def _mock_reply(self, text: str) -> None:
-        activity = self.query_one("#activity-indicator", ActivityIndicator)
+    async def _no_api_key_reply(self) -> None:
         transcript = self.query_one("#transcript-pane", TranscriptPane)
-        try:
-            activity.set_activity("Mocking...")
-            await transcript.stream_mock_reply(text)
-        finally:
-            activity.set_idle()
-            self._busy = False
-            self._flush_pending_messages()
+        msg = (
+            "**No API key configured.**\n\n"
+            "Set one of:\n\n"
+            "- `FREECODE_API_KEY` or `APIFREELLM_API_KEY` (ApiFreeLLM)\n"
+            "- `GROQ_API_KEY` (Groq)\n\n"
+            "Optional rotation: `FREECODE_API_KEY_2`, `GROQ_API_KEY_2`, …\n\n"
+            "Then restart `freecode`."
+        )
+        await transcript.stream_agent_message(msg)
 
     async def _live_reply(self, text: str) -> None:
         assert self._agent is not None

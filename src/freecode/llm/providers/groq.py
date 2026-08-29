@@ -35,10 +35,11 @@ GROQ_MODELS: tuple[str, ...] = (
     "qwen/qwen3-32b",
     "groq/compound",
     "groq/compound-mini",
-    # Often Enterprise-only on free keys (404):
+    # Often Enterprise-only on free keys (HTTP 404):
     "llama-3.1-8b-instant",
     "llama-3.3-70b-versatile",
 )
+
 
 
 
