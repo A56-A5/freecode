@@ -13,10 +13,18 @@ feel by revealing the full reply in small chunks after it arrives.
 from __future__ import annotations
 
 import asyncio
+import re
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Markdown, Static
+
+_FENCE_RE = re.compile(r"```(?:[\w+-]*)\n(.*?)```", re.DOTALL)
+
+
+def extract_fenced_blocks(text: str) -> list[str]:
+    """Return bodies of markdown fenced code blocks (no fences)."""
+    return [m.group(1).rstrip("\n") for m in _FENCE_RE.finditer(text or "")]
 
 
 class TranscriptPane(VerticalScroll):
@@ -101,6 +109,23 @@ class TranscriptPane(VerticalScroll):
         for child in list(self.children):
             child.remove()
 
+    def clear_view(self) -> None:
+        """Clear the visible transcript only (session state unchanged)."""
+        self.clear()
+
+    def _remember_assistant(self, text: str) -> None:
+        self._last_assistant_text = text or ""
+        blocks = extract_fenced_blocks(text or "")
+        if blocks:
+            self._last_code_blocks = blocks
+            self._last_code_block = blocks[-1]
+
+    def last_assistant_text(self) -> str:
+        return getattr(self, "_last_assistant_text", "") or ""
+
+    def last_code_block(self) -> str:
+        return getattr(self, "_last_code_block", "") or ""
+
     def write_user_message(self, text: str) -> None:
         """Render a user message with a left accent rail."""
         text = (text or "").rstrip()
@@ -115,6 +140,7 @@ class TranscriptPane(VerticalScroll):
     def write_agent_message(self, text: str) -> None:
         """Mount a complete assistant reply (no typing animation)."""
         text = (text or "").rstrip() or "*(empty response)*"
+        self._remember_assistant(text)
         md = Markdown(text)
         row = Horizontal(
             Static("●", classes="assistant-marker"),
@@ -138,6 +164,7 @@ class TranscriptPane(VerticalScroll):
         only. Short replies appear almost immediately; long ones type out.
         """
         text = (text or "").rstrip() or "*(empty response)*"
+        self._remember_assistant(text)
         md = Markdown("")
         row = Horizontal(
             Static("●", classes="assistant-marker"),

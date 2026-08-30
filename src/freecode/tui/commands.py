@@ -26,6 +26,8 @@ HELP_TEXT = """\
 | Enter | New line in composer |
 | Ctrl+Enter | Send message |
 | Ctrl+E | Edit last prompt (load into composer) |
+| Ctrl+Shift+C | Copy last assistant reply |
+| Ctrl+Shift+B | Copy last code block |
 | Ctrl+/ or type `/` | Open command palette |
 | Ctrl+X | Interrupt agent |
 | Ctrl+C | Quit |
@@ -42,6 +44,9 @@ HELP_TEXT = """\
 | `/edit` | Load last user prompt into the composer |
 | `/provider` | List / switch LLM provider (apifreellm, groq) |
 | `/model` | List / switch Groq model |
+| `/cls` | Clear transcript view (keep session) |
+| `/copy` | Copy last assistant reply |
+| `/copy code` | Copy last fenced code block |
 | `/plan` | Toggle dry-run plan mode |
 | `/undo` | Restore files from last edit batch |
 | `/theme` | List color themes |
@@ -79,6 +84,12 @@ def try_handle_slash(app: FreeCodeApp, text: str) -> CommandResult:
 
     if cmd == "/provider":
         return _cmd_provider(app, arg1)
+
+    if cmd in ("/cls", "/clear-screen"):
+        return _cmd_cls(app)
+
+    if cmd == "/copy":
+        return _cmd_copy(app, arg1)
 
     if cmd in ("/plan", "/dry-run", "/dryrun"):
         return _cmd_plan(app)
@@ -231,7 +242,22 @@ def _cmd_session_delete(app: FreeCodeApp, session_id: str) -> CommandResult:
     return CommandResult(handled=True, message=f"Deleted session `{resolved[:8]}`")
 
 
+def _cmd_cls(app: FreeCodeApp) -> CommandResult:
+    app.clear_transcript_view()
+    return CommandResult(handled=True, message="")  # toast only; no spam in transcript
+
+
+def _cmd_copy(app: FreeCodeApp, kind: str) -> CommandResult:
+    kind = (kind or "reply").strip().lower()
+    if kind in ("code", "block", "snippet", "fence"):
+        app.action_copy_last_code()
+        return CommandResult(handled=True, message="")
+    app.action_copy_last_reply()
+    return CommandResult(handled=True, message="")
+
+
 def _cmd_plan(app: FreeCodeApp) -> CommandResult:
+
     on = app.toggle_plan_mode()
     if on:
         return CommandResult(

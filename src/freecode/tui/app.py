@@ -48,6 +48,8 @@ class FreeCodeApp(App):
         ("ctrl+c", "quit", "Quit"),
         ("ctrl+x", "interrupt", "Interrupt"),
         ("ctrl+e", "edit_last", "Edit last prompt"),
+        ("ctrl+shift+c", "copy_last_reply", "Copy reply"),
+        ("ctrl+shift+b", "copy_last_code", "Copy code"),
     ]
 
     def __init__(self, config: Config | None = None) -> None:
@@ -313,12 +315,13 @@ class FreeCodeApp(App):
         cmd = try_handle_slash(self, text)
         if cmd.handled:
             transcript.write_user_message(text)
-            if cmd.error:
-                transcript.write_error_message(cmd.message)
-            else:
-                self.run_worker(
-                    transcript.stream_agent_message(cmd.message), exclusive=False
-                )
+            if cmd.message:
+                if cmd.error:
+                    transcript.write_error_message(cmd.message)
+                else:
+                    self.run_worker(
+                        transcript.stream_agent_message(cmd.message), exclusive=False
+                    )
             return
 
         transcript.write_user_message(text)
@@ -518,11 +521,66 @@ class FreeCodeApp(App):
         except Exception:
             pass
 
+
+    def _toast(self, message: str, *, severity: str = "information") -> None:
+        try:
+            self.notify(message, severity=severity, timeout=2.5)
+        except Exception:
+            pass
+
+    def _copy_text(self, text: str, *, what: str = "text") -> bool:
+        text = (text or "").strip("\n")
+        if not text:
+            self._toast(f"Nothing to copy ({what})", severity="warning")
+            return False
+        try:
+            self.copy_to_clipboard(text)
+            self._toast(f"Copied {what}")
+            return True
+        except Exception:
+            try:
+                import subprocess
+                subprocess.run(
+                    ["xclip", "-selection", "clipboard"],
+                    input=text.encode("utf-8"),
+                    check=False,
+                )
+                self._toast(f"Copied {what}")
+                return True
+            except Exception:
+                self._toast("Clipboard unavailable", severity="error")
+                return False
+
+    def action_copy_last_reply(self) -> None:
+        try:
+            pane = self.query_one("#transcript-pane", TranscriptPane)
+        except Exception:
+            self._toast("No transcript", severity="warning")
+            return
+        self._copy_text(pane.last_assistant_text(), what="last reply")
+
+    def action_copy_last_code(self) -> None:
+        try:
+            pane = self.query_one("#transcript-pane", TranscriptPane)
+        except Exception:
+            self._toast("No transcript", severity="warning")
+            return
+        self._copy_text(pane.last_code_block(), what="last code block")
+
+    def clear_transcript_view(self) -> None:
+        try:
+            pane = self.query_one("#transcript-pane", TranscriptPane)
+            pane.clear_view()
+            self._toast("Transcript cleared")
+        except Exception:
+            pass
+
     def toggle_plan_mode(self) -> bool:
         self._plan_mode = not self._plan_mode
         if self._tools is not None:
             self._tools.plan_mode = self._plan_mode
         self._sync_footer()
+        self._toast("Plan mode ON" if self._plan_mode else "Plan mode OFF")
         return self._plan_mode
 
     def undo_last_tools(self) -> str:
@@ -532,6 +590,9 @@ class FreeCodeApp(App):
         if result.ok:
             self._files_edited = max(0, self._files_edited - 1)
             self._sync_footer()
+            self._toast("Undid last edit batch")
+        else:
+            self._toast(result.error or "Nothing to undo", severity="warning")
         return result.output or result.error or ("ok" if result.ok else "failed")
 
     def set_theme_name(self, name: str) -> bool:
