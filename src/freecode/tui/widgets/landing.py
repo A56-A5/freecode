@@ -4,6 +4,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
 from textual.widgets import Static
 
+from freecode.tui.widgets.command_palette import CommandPalette
 from freecode.tui.widgets.input import FreeCodeComposer
 
 
@@ -42,6 +43,18 @@ class LandingScreen(Vertical):
         margin-bottom: 2;
     }
 
+    #landing-palette-row {
+        width: 1fr;
+        height: auto;
+        align: center middle;
+    }
+
+    #landing-palette {
+        width: 70%;
+        max-width: 90;
+        min-width: 40;
+    }
+
     #landing-input-row {
         width: 1fr;
         height: auto;
@@ -73,11 +86,15 @@ class LandingScreen(Vertical):
         yield Vertical(
             Static(FREECODE_ASCII, id="freecode-ascii"),
             Horizontal(
+                CommandPalette(id="landing-palette"),
+                id="landing-palette-row",
+            ),
+            Horizontal(
                 FreeCodeComposer(id="landing-input"),
                 id="landing-input-row",
             ),
             Static(
-                "Enter = newline · Ctrl+Enter = send",
+                "Enter = newline · Ctrl+Enter = send · / = commands",
                 id="landing-hint",
             ),
             id="landing-content",

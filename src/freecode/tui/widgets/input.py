@@ -1,11 +1,5 @@
 """
-tui.widgets.input - FreeCode message composers.
-
-- FreeCodeInput: single-line (landing screen)
-- FreeCodeComposer: multi-line TextArea (conversation)
-
-Submit: Ctrl+Enter (Enter inserts a newline for paragraphs).
-Paste: handled by Textual/TextArea (bracketed paste in supporting terminals).
+tui.widgets.input - FreeCode composers.
 """
 from __future__ import annotations
 
@@ -13,20 +7,17 @@ from textual import on
 from textual.binding import Binding
 from textual.message import Message
 from textual.widgets import Input, TextArea
-from freecode.tui.widgets.command_palette import CommandPalette
+
+from freecode.tui.widgets.command_palette import CommandChosen, CommandPalette
 
 
 class MessageSubmitted(Message):
-    """Posted when the user submits a composer (or landing) message."""
-
     def __init__(self, text: str) -> None:
         super().__init__()
         self.text = text
 
 
 class FreeCodeInput(Input):
-    """Single-line input used on the landing screen."""
-
     DEFAULT_CSS = """
     FreeCodeInput {
         width: 1fr;
@@ -36,18 +27,12 @@ class FreeCodeInput(Input):
         color: $foreground;
         padding: 0 1;
     }
-
     FreeCodeInput:focus {
         border: round $accent;
     }
     """
 
-    def __init__(
-        self,
-        *,
-        placeholder: str = "Type a message...",
-        **kwargs,
-    ) -> None:
+    def __init__(self, *, placeholder: str = "Type a message...", **kwargs) -> None:
         super().__init__(placeholder=placeholder, **kwargs)
 
     @on(Input.Submitted)
@@ -58,19 +43,39 @@ class FreeCodeInput(Input):
         event.stop()
 
 
+def _find_palette(widget) -> CommandPalette | None:
+    app = widget.app
+    try:
+        if getattr(widget, "id", None) == "landing-input":
+            return app.query_one("#landing-palette", CommandPalette)
+    except Exception:
+        pass
+    try:
+        if getattr(widget, "id", None) == "chat-input":
+            return app.query_one("#command-palette", CommandPalette)
+    except Exception:
+        pass
+    try:
+        landing = app.query_one("#landing")
+        if getattr(landing, "display", True) is not False:
+            return app.query_one("#landing-palette", CommandPalette)
+    except Exception:
+        pass
+    try:
+        return app.query_one("#command-palette", CommandPalette)
+    except Exception:
+        return None
+
+
 class FreeCodeComposer(TextArea):
-    """
-    Multi-line message box for the conversation view.
-
-    Enter     → new line (paragraphs)
-    Ctrl+Enter → send
-    Paste works via the terminal's bracketed-paste support.
-    """
-
     BINDINGS = [
         Binding("ctrl+enter", "submit", "Send", priority=True, show=True),
         Binding("ctrl+j", "submit", "Send", priority=True, show=False),
         Binding("ctrl+slash", "open_palette", "Commands", priority=True, show=True),
+        Binding("escape", "escape_palette", "Close palette", priority=True, show=False),
+        Binding("up", "palette_up", "Palette up", priority=True, show=False),
+        Binding("down", "palette_down", "Palette down", priority=True, show=False),
+        Binding("enter", "palette_or_newline", "Select / newline", priority=True, show=False),
     ]
 
     DEFAULT_CSS = """
@@ -84,32 +89,13 @@ class FreeCodeComposer(TextArea):
         color: $foreground;
         padding: 0 1;
     }
-
     FreeCodeComposer:focus {
         border: round $accent;
     }
     """
 
-    def __init__(
-        self,
-        *,
-        id: str | None = None,
-        placeholder: str = "Message… (Enter = newline, Ctrl+Enter = send)",
-        **kwargs,
-    ) -> None:
-        # soft_wrap helps long lines; show line numbers off for a chat feel
-        super().__init__(
-            id=id,
-            soft_wrap=True,
-            show_line_numbers=False,
-            tab_behavior="indent",
-            **kwargs,
-        )
-        self._placeholder = placeholder
-
-    def on_mount(self) -> None:
-        # TextArea has no built-in placeholder; tooltip helps discover submit.
-        self.tooltip = self._placeholder
+    def __init__(self, *, id: str | None = None, **kwargs) -> None:
+        super().__init__(id=id, **kwargs)
 
     def action_submit(self) -> None:
         text = self.text.strip()
@@ -119,30 +105,93 @@ class FreeCodeComposer(TextArea):
         self.clear()
 
     def action_open_palette(self) -> None:
-        self._show_palette(self.text.strip() or "/")
+        pal = _find_palette(self)
+        if pal is None:
+            return
+        prefix = self.text.strip() or "/"
+        if not prefix.startswith("/"):
+            prefix = "/"
+        pal.open_palette(prefix)
+        self.focus()
+
+    def action_escape_palette(self) -> None:
+        pal = _find_palette(self)
+        if pal is not None and pal.is_open():
+            pal.close_palette()
+
+    def action_palette_up(self) -> None:
+        pal = _find_palette(self)
+        if pal is not None and pal.is_open():
+            pal.move(-1)
+            return
+        try:
+            self.action_cursor_up()
+        except Exception:
+            pass
+
+    def action_palette_down(self) -> None:
+        pal = _find_palette(self)
+        if pal is not None and pal.is_open():
+            pal.move(1)
+            return
+        try:
+            self.action_cursor_down()
+        except Exception:
+            pass
+
+    def action_palette_or_newline(self) -> None:
+        pal = _find_palette(self)
+        if pal is not None and pal.is_open():
+            text = pal.accept()
+            if text:
+                self._apply_palette_choice(text)
+            return
+        try:
+            self.insert("\n")
+        except Exception:
+            pass
+
+    def _apply_palette_choice(self, text: str) -> None:
+        text = (text or "").strip()
+        self.clear()
+        if not text:
+            self.focus()
+            return
+        self.text = text
+        try:
+            lines = text.split("\n")
+            self.cursor_location = (len(lines) - 1, len(lines[-1]))
+        except Exception:
+            pass
+        self.focus()
 
     def on_key(self, event) -> None:  # type: ignore[no-untyped-def]
-        # Open palette when the buffer is exactly "/" after a keypress
-        if event.character == "/" and (not self.text or self.text == "/"):
-            self.call_after_refresh(self._show_palette, "/")
+        if event.character == "/" and (not self.text or self.text.strip() == ""):
+            self.call_after_refresh(self._open_from_slash)
+            return
+        if event.character and event.character.isprintable():
+            self.call_after_refresh(self._refine_palette)
 
-    def _show_palette(self, prefix: str) -> None:
-        async def _run() -> None:
-            result = await self.app.push_screen_wait(CommandPalette(prefix=prefix))
-            # Always clear residual "/" text first
-            self.clear()
-            if not result:
-                self.focus()
-                return
-            text = result.strip()
-            # Commands that need no further args: run immediately
-            auto = text in {
-                "/help", "/sessions", "/new", "/clear", "/edit", "/session", "/theme", "/provider",
-            } or (text.startswith("/") and not text.endswith(" "))
-            if auto and " " not in text.strip():
-                self.post_message(MessageSubmitted(text))
-            else:
-                self.text = text
-            self.focus()
+    def _open_from_slash(self) -> None:
+        pal = _find_palette(self)
+        if pal is None:
+            return
+        prefix = self.text.strip() or "/"
+        if not prefix.startswith("/"):
+            prefix = "/" + prefix
+        pal.open_palette(prefix)
+        self.focus()
 
-        self.app.run_worker(_run(), exclusive=False)
+    def _refine_palette(self) -> None:
+        pal = _find_palette(self)
+        if pal is None or not pal.is_open():
+            return
+        text = self.text.strip()
+        if not text.startswith("/"):
+            pal.close_palette()
+            return
+        pal.refine(text)
+
+    def on_command_chosen(self, event: CommandChosen) -> None:
+        event.stop()
+        self._apply_palette_choice(event.text)

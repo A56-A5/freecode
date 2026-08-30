@@ -16,6 +16,7 @@ from freecode.tui.widgets.activity import ActivityIndicator
 from freecode.tui.widgets.cooldown import CooldownBar
 from freecode.tui.widgets.footer_stats import FooterStats
 from freecode.tui.widgets.input import FreeCodeComposer, FreeCodeInput
+from freecode.tui.widgets.command_palette import CommandPalette
 from freecode.tui.widgets.landing import LandingScreen
 
 
@@ -78,6 +79,7 @@ class MainLayout(Vertical):
 
         # Bottom composer and status widgets.
         yield Vertical(
+            CommandPalette(id="command-palette"),
             FreeCodeComposer(
                 id="chat-input",
             ),

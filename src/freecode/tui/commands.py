@@ -148,24 +148,22 @@ def _cmd_sessions(app: FreeCodeApp) -> CommandResult:
     store = app.session_store
     if store is None:
         return CommandResult(handled=True, message="Persistence not available.", error=True)
-    rows = store.list_sessions(limit=30)
+    rows = [s for s in store.list_sessions(limit=50) if (s.turn or 0) >= 1]
     if not rows:
-        return CommandResult(handled=True, message="No sessions yet. Use `/new`.")
+        return CommandResult(
+            handled=True,
+            message="No chat sessions yet. Send a message, then `/sessions`.",
+        )
     active = store.active_session_id()
     lines = ["**Sessions**", ""]
     for i, s in enumerate(rows, start=1):
         mark = "→" if s.id == active else " "
-        title = (s.title or s.goal or "(untitled)").replace("\n", " ")[:48]
+        title = (s.title or s.goal or "chat").replace("\n", " ").strip()[:56] or "chat"
         when = _fmt_ts(s.updated_at)
-        short = s.id[:8]
-        # Blank line between entries so Markdown does not collapse into one line
-        lines.append(f"{mark} **#{i}** `{short}`")
-        lines.append(f"    {title}")
-        lines.append(f"    turn {s.turn} · {s.phase} · {when}")
+        lines.append(f"{mark} **#{i}**  {title}")
+        lines.append(f"       {when}")
         lines.append("")
-    lines.append("Switch: `/session switch 1`")
-    lines.append("Delete: `/session delete 1`")
-    lines.append("New: `/new`")
+    lines.append("`/session switch 1`  ·  `/session delete 1`  ·  `/new`")
     return CommandResult(handled=True, message="\n".join(lines))
 
 
@@ -178,7 +176,7 @@ def _resolve_session_ref(app: FreeCodeApp, ref: str) -> str | None:
     store = app.session_store
     if store is None:
         return None
-    rows = store.list_sessions(limit=50)
+    rows = [s for s in store.list_sessions(limit=50) if (s.turn or 0) >= 1]
     if ref.isdigit():
         idx = int(ref)
         if 1 <= idx <= len(rows):

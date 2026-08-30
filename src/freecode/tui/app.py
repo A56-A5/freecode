@@ -335,6 +335,7 @@ class FreeCodeApp(App):
             self._agent = self._build_agent()
 
         self._busy = True
+        self._sync_footer()
         self.run_worker(self._live_reply(text), exclusive=True)
 
     async def _no_api_key_reply(self) -> None:
@@ -445,6 +446,7 @@ class FreeCodeApp(App):
         finally:
             activity.set_idle()
             self._busy = False
+            self._sync_footer()
             self._sync_cooldown_bar()
             self._persist_cooldown()
             self._flush_pending_messages()
@@ -502,20 +504,23 @@ class FreeCodeApp(App):
     def _sync_footer(self) -> None:
         try:
             footer = self.query_one("#footer-stats", FooterStats)
-            sid = self._session_id or ""
             provider = self.active_provider() if self._router else ""
-            model = self.active_model() if provider == "groq" else None
+            model = self.active_model() if self._router else None
             if self._plan_mode:
-                mode = "plan"
+                label = "plan"
             elif provider == "groq" and model:
-                mode = f"groq/{model.split('/')[-1][:18]}"
+                short = model.split("/")[-1]
+                label = f"groq/{short}"
+            elif provider == "apifreellm":
+                label = "apifreellm"
             elif provider:
-                mode = provider
+                label = provider
             else:
-                mode = "freecode"
+                label = "no-key"
+            status = "busy" if getattr(self, "_busy", False) else "ready"
             footer.set_stats(
-                mode_label=mode,
-                session_label=sid[:8] if sid else "",
+                model_label=label,
+                status=status,
                 files_edited=self._files_edited,
             )
         except Exception:
