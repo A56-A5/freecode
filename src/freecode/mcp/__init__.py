@@ -1,11 +1,27 @@
 """
-mcp/ - MCP client boundary (ph-07 stub).
+mcp/ - MCP server and client integration.
 
-Local tools in freecode.tools are the default implementation. This package
-is the abstraction point for external MCP servers later (GitHub, Docker, …).
+This package contains:
+- MCPServer: Core MCP server that exposes FreeCode's tools and resources
+- MCPEndpoint: JSON-RPC transport layer for MCP protocol over stdio
+- Local tools (freecode.tools) are wrapped as MCP tools
+
+Usage:
+    from freecode.mcp import MCPServer, run_mcp_server
+    
+    # Or run as a server:
+    python -m freecode.mcp /path/to/project
 """
 
-# Re-export the local executor so callers can depend on mcp. as a façade.
+from freecode.mcp.server import MCPServer, MCP_SERVER_INFO
+from freecode.mcp.endpoint import MCPEndpoint, run_mcp_server
 from freecode.tools import ToolExecutor, ToolResult
 
-__all__ = ["ToolExecutor", "ToolResult"]
+__all__ = [
+    "MCPServer",
+    "MCPEndpoint",
+    "MCP_SERVER_INFO",
+    "run_mcp_server",
+    "ToolExecutor",
+    "ToolResult",
+]
