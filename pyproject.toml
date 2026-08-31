@@ -29,7 +29,7 @@ dev = [
 ]
 
 [project.scripts]
-freecode = "freecode.main:run"
+freecode = "freecode.cli:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
