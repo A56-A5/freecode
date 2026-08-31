@@ -116,6 +116,41 @@ You approve first; FreeCode fetches the page (or a lightweight search) and feeds
 
 Footer shows the active provider (and Groq model when relevant).
 
+## MCP Server
+
+Run FreeCode as an **MCP (Model Context Protocol) server** to give Claude, Cursor, or other MCP clients instant access to your project's tools:
+
+```bash
+# Launch MCP server on your project
+freecode mcp /path/to/project
+
+# Or in current directory
+freecode mcp .
+```
+
+Then connect from:
+
+- **Claude Desktop** — add to `~/.claude/claude_desktop_config.json`:
+  ```json
+  "mcpServers": {
+    "freecode": {
+      "command": "freecode",
+      "args": ["mcp", "/path/to/project"]
+    }
+  }
+  ```
+
+- **Cursor** — add to settings (MCP servers section):
+  ```json
+  {
+    "name": "freecode",
+    "command": "freecode",
+    "args": ["mcp", "/path/to/project"]
+  }
+  ```
+
+The server exposes 10+ tools (read/write files, run shell commands, git operations, code search) without rate limits. Full details: [`docs/MCP.md`](./docs/MCP.md).
+
 ## How it works
 
 ```
