@@ -343,10 +343,17 @@ class ApiFreeLLMClient:
             if not isinstance(err, str):
                 err = str(err)
             low = err.lower()
-            if "timed out" in low or "timeout" in low or "community" in low:
+            # ApiFreeLLM free tier often returns success:false with e.g.
+            # "Community request timed out" — that is NOT the daily 50/24h quota.
+            if (
+                "timed out" in low
+                or "timeout" in low
+                or "request timed out" in low
+            ):
                 raise LLMTransportError(
-                    f"{err} — free-tier community requests can time out on long "
-                    f"generations; try a shorter prompt or wait for cooldown and retry.",
+                    f"{err} — ApiFreeLLM free-tier community requests often time out "
+                    f"under load or on long prompts. Wait for the cooldown bar, then "
+                    f"retry with a shorter message (or use `/provider groq`).",
                     status_code=200,
                 )
             raise LLMResponseError(err, status_code=200)

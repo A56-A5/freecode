@@ -14,7 +14,12 @@ from textual.widgets import Input
 from freecode.agent import AgentCore, AgentLoop
 from freecode.config import Config, get_logger, load_config
 from freecode.context import ContextEngine
-from freecode.domain.errors import LLMError, LLMRateLimitError, LLMServerError
+from freecode.domain.errors import (
+    LLMError,
+    LLMRateLimitError,
+    LLMServerError,
+    LLMTransportError,
+)
 from freecode.domain.state import AgentState
 from freecode.llm import Scheduler
 from freecode.llm.providers import ApiFreeLLMProvider, GroqProvider, ProviderRouter
@@ -427,18 +432,50 @@ class FreeCodeApp(App):
                     outcome.stopped_reason,
                 )
         except LLMRateLimitError as exc:
-            self._scheduler.record_rate_limit(exc.retry_after_seconds)
-            transcript.write_error_message(
-                f"Rate limited. Cooling down"
-                f"{f' (~{exc.retry_after_seconds:.0f}s)' if exc.retry_after_seconds else ''}."
-            )
+            msg = str(exc)
+            from freecode.llm.client import _is_daily_quota_error
+
+            if _is_daily_quota_error(msg):
+                self._scheduler.reset()
+                transcript.write_error_message(
+                    f"**Daily quota** ({self.active_provider()}): {msg}\n\n"
+                    "Try `/provider groq` or another FREECODE_API_KEY_N."
+                )
+            else:
+                retry = exc.retry_after_seconds
+                if retry is None or retry <= 0:
+                    retry = float(self._config.scheduler.cooldown_floor_seconds)
+                self._scheduler.record_rate_limit(retry)
+                self._sync_cooldown_bar()
+                transcript.write_error_message(
+                    f"**Rate limited** ({self.active_provider()}). "
+                    f"Cooldown ~{retry:.0f}s — see the bar above the footer."
+                )
             log.warning("rate limited: %s", exc)
+        except LLMTransportError as exc:
+            # e.g. "Community request timed out" — not a daily quota.
+            floor = float(self._config.scheduler.cooldown_floor_seconds)
+            self._scheduler.record_rate_limit(floor)
+            self._sync_cooldown_bar()
+            transcript.write_error_message(
+                f"**Request timed out** ({self.active_provider()}).\n\n"
+                f"{exc}\n\n"
+                f"This is a free-tier community timeout (server dropped the job), "
+                f"**not** a daily quota. Wait ~{floor:.0f}s (cooldown bar), "
+                f"retry a shorter prompt, or `/provider groq`."
+            )
+            log.warning("transport/timeout: %s", exc)
         except LLMServerError as exc:
             self._scheduler.record_server_error()
-            transcript.write_error_message(f"ApiFreeLLM server error: {exc}")
+            self._sync_cooldown_bar()
+            transcript.write_error_message(
+                f"**{self.active_provider()} server error:** {exc}"
+            )
             log.warning("server error: %s", exc)
         except LLMError as exc:
-            transcript.write_error_message(f"ApiFreeLLM error: {exc}")
+            transcript.write_error_message(
+                f"**{self.active_provider()} error:** {exc}"
+            )
             log.warning("llm error: %s", exc)
         except Exception as exc:  # noqa: BLE001
             transcript.write_error_message(f"Unexpected error: {exc}")

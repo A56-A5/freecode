@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from freecode.agent.lifecycle import apply_response, transition
 from freecode.config.logging import get_logger
-from freecode.domain.errors import LLMError, LLMRateLimitError, LLMServerError
+from freecode.domain.errors import LLMError, LLMRateLimitError, LLMTransportError, LLMServerError
 from freecode.domain.state import AgentPhase, AgentState
 from freecode.llm.protocol import AgentResponse
 from freecode.llm.repair import repair_response
@@ -163,11 +163,10 @@ class AgentCore:
 
         try:
             chat = await self._send(prompt)
-        except LLMRateLimitError as exc:
+        except (LLMRateLimitError, LLMTransportError):
+            # Let the TUI arm cooldown / show the right message (timeout vs quota).
             self.state.phase = AgentPhase.ERROR
-            self.state.error = str(exc)
-            resp = AgentResponse.plain_text_fallback(f"Rate limited: {exc}")
-            return AgentTurnResult(response=resp, phase=self.state.phase, error=str(exc))
+            raise
         except LLMServerError as exc:
             self.state.phase = AgentPhase.ERROR
             self.state.error = str(exc)

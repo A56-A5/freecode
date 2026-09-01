@@ -45,13 +45,14 @@ class FreeCodeInput(Input):
 
 def _find_palette(widget) -> CommandPalette | None:
     app = widget.app
+    wid = getattr(widget, "id", None)
     try:
-        if getattr(widget, "id", None) == "landing-input":
+        if wid == "landing-input":
             return app.query_one("#landing-palette", CommandPalette)
     except Exception:
         pass
     try:
-        if getattr(widget, "id", None) == "chat-input":
+        if wid == "chat-input":
             return app.query_one("#command-palette", CommandPalette)
     except Exception:
         pass
@@ -105,13 +106,7 @@ class FreeCodeComposer(TextArea):
         self.clear()
 
     def action_open_palette(self) -> None:
-        pal = _find_palette(self)
-        if pal is None:
-            return
-        prefix = self.text.strip() or "/"
-        if not prefix.startswith("/"):
-            prefix = "/"
-        pal.open_palette(prefix)
+        self._sync_palette(force_open=True)
         self.focus()
 
     def action_escape_palette(self) -> None:
@@ -143,7 +138,7 @@ class FreeCodeComposer(TextArea):
         pal = _find_palette(self)
         if pal is not None and pal.is_open():
             text = pal.accept()
-            if text:
+            if text is not None:
                 self._apply_palette_choice(text)
             return
         try:
@@ -152,9 +147,9 @@ class FreeCodeComposer(TextArea):
             pass
 
     def _apply_palette_choice(self, text: str) -> None:
-        text = (text or "").strip()
+        text = (text or "").rstrip("\n")  # keep trailing space for args
         self.clear()
-        if not text:
+        if text == "":
             self.focus()
             return
         self.text = text
@@ -166,31 +161,50 @@ class FreeCodeComposer(TextArea):
         self.focus()
 
     def on_key(self, event) -> None:  # type: ignore[no-untyped-def]
-        if event.character == "/" and (not self.text or self.text.strip() == ""):
-            self.call_after_refresh(self._open_from_slash)
-            return
-        if event.character and event.character.isprintable():
-            self.call_after_refresh(self._refine_palette)
+        key = getattr(event, "key", None) or ""
+        if key == "enter":
+            pal = _find_palette(self)
+            if pal is not None and pal.is_open():
+                text = pal.accept()
+                if text is not None:
+                    self._apply_palette_choice(text)
+                event.prevent_default()
+                event.stop()
+                return
+        if key == "escape":
+            pal = _find_palette(self)
+            if pal is not None and pal.is_open():
+                pal.close_palette()
+                event.prevent_default()
+                event.stop()
+                return
+        if key in ("up", "down"):
+            pal = _find_palette(self)
+            if pal is not None and pal.is_open():
+                pal.move(-1 if key == "up" else 1)
+                event.prevent_default()
+                event.stop()
+                return
+        ch = getattr(event, "character", None)
+        if ch == "/" or (ch and ch.isprintable()):
+            self.call_after_refresh(self._sync_palette)
 
-    def _open_from_slash(self) -> None:
+    def _sync_palette(self, force_open: bool = False) -> None:
         pal = _find_palette(self)
         if pal is None:
             return
-        prefix = self.text.strip() or "/"
-        if not prefix.startswith("/"):
-            prefix = "/" + prefix
-        pal.open_palette(prefix)
-        self.focus()
-
-    def _refine_palette(self) -> None:
-        pal = _find_palette(self)
-        if pal is None or not pal.is_open():
+        first = (self.text or "").split("\n", 1)[0]
+        stripped = first.strip()
+        if force_open or stripped.startswith("/"):
+            if not stripped.startswith("/"):
+                stripped = "/"
+            if not pal.is_open():
+                pal.open_palette(stripped or "/")
+            else:
+                pal.refine(stripped or "/")
             return
-        text = self.text.strip()
-        if not text.startswith("/"):
+        if pal.is_open():
             pal.close_palette()
-            return
-        pal.refine(text)
 
     def on_command_chosen(self, event: CommandChosen) -> None:
         event.stop()

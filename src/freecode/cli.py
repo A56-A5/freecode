@@ -31,12 +31,17 @@ async def run_mcp_subcommand(args: list[str]) -> int:
 
 
 def run_tui_subcommand(args: list[str]) -> int:
-    """Run the main TUI subcommand."""
-    from freecode.config import load_config, setup_logging
+    """Run the main TUI subcommand (synchronous — do not wrap in asyncio.run)."""
+    from freecode.config import get_logger, load_config, setup_logging
     from freecode.tui.app import run_tui
 
     config = load_config()
     setup_logging(config)
+    log = get_logger("main")
+    if config.llm.api_keys or config.llm.groq_api_keys:
+        log.info("live LLM mode (API key present)")
+    else:
+        log.warning("no API key — set FREECODE_API_KEY or GROQ_API_KEY")
     return run_tui(config)
 
 
@@ -266,34 +271,34 @@ SUPPORT
     )
 
 
-async def async_main() -> int:
-    """Main async entry point."""
-    args = sys.argv[1:]
-
-    if not args or args[0] in ("--help", "-h"):
-        print_help()
-        return 0
-
-    if args[0] == "--version":
-        print("FreeCode 0.1.0")
-        return 0
-
-    if args[0] == "setup":
-        return await run_setup_subcommand(args[1:])
-
-    if args[0] == "mcp":
-        return await run_mcp_subcommand(args[1:])
-
-    # Default: run TUI
-    return run_tui_subcommand(args)
-
-
 def main() -> int:
-    """Console-script entry point."""
+    """Console-script entry point (sync TUI; asyncio only for setup/mcp)."""
+    args = sys.argv[1:]
     try:
-        return asyncio.run(async_main())
+        if not args:
+            return run_tui_subcommand([])
+        head = args[0]
+        if head in ("--help", "-h", "help"):
+            print_help()
+            return 0
+        if head in ("--version", "-V", "version"):
+            print("FreeCode 0.1.0")
+            return 0
+        if head == "setup":
+            return asyncio.run(run_setup_subcommand(args[1:]))
+        if head == "mcp":
+            return asyncio.run(run_mcp_subcommand(args[1:]))
+        if head.startswith("-"):
+            print(f"Unknown option: {head}", file=sys.stderr)
+            print("Try `freecode --help`.", file=sys.stderr)
+            return 2
+        return run_tui_subcommand(args)
     except KeyboardInterrupt:
         return 0
     except Exception as e:
         print(f"Fatal error: {e}", file=sys.stderr)
         return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

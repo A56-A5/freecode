@@ -118,23 +118,27 @@ class CommandPalette(Vertical):
         yield Static("", id="palette-body")
 
     def is_open(self) -> bool:
-        return self.has_class("-open")
+        return bool(self.has_class("-open"))
 
     def open_palette(self, prefix: str = "/") -> None:
-        self._filter = prefix if (prefix or "").startswith("/") else f"/{prefix or ''}"
+        raw = prefix or "/"
+        self._filter = raw if raw.startswith("/") else f"/{raw}"
         self._index = 0
-        self.add_class("-open")
         self.display = True
+        self.add_class("-open")
         self._rebuild()
+        self.refresh(layout=True)
 
     def close_palette(self) -> None:
         self.remove_class("-open")
         self.display = False
+        self.refresh(layout=True)
 
     def refine(self, prefix: str) -> None:
         if not self.is_open():
             return
-        self._filter = prefix if (prefix or "").startswith("/") else f"/{prefix or ''}"
+        raw = prefix or "/"
+        self._filter = raw if raw.startswith("/") else f"/{raw}"
         self._index = 0
         self._rebuild()
 

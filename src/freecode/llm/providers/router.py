@@ -36,15 +36,35 @@ class ProviderRouter:
         return any(getattr(p, "has_api_key", False) for p in self._providers)
 
     def force(self, name: str) -> bool:
+        """Switch active provider. Returns False if name unknown or no key."""
+        name = (name or "").strip().lower()
         for i, p in enumerate(self._providers):
             if getattr(p, "name", "") == name:
+                if not getattr(p, "has_api_key", False):
+                    log.warning("force %s failed: no API key configured", name)
+                    return False
                 self._index = i
+                # Fresh start on this provider (user explicitly chose it)
                 self._exhausted.discard(i)
+                log.info("provider forced -> %s", name)
                 return True
         return False
 
     def names(self) -> list[str]:
         return [getattr(p, "name", "?") for p in self._providers]
+
+    def provider_status(self) -> list[tuple[str, bool, bool]]:
+        """(name, has_key, is_active) for UI."""
+        out = []
+        for i, p in enumerate(self._providers):
+            out.append(
+                (
+                    getattr(p, "name", "?"),
+                    bool(getattr(p, "has_api_key", False)),
+                    i == self._index,
+                )
+            )
+        return out
 
     def set_model(self, model: str) -> bool:
         """Set model on the active provider if it supports it."""

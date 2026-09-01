@@ -315,21 +315,51 @@ def _cmd_provider(app: FreeCodeApp, name: str) -> CommandResult:
     if not name:
         cur = app.active_provider()
         lines = ["**Providers**", ""]
-        for n in names:
-            mark = "→" if n == cur else " "
-            lines.append(f"{mark} `{n}`")
+        status = []
+        try:
+            if app._router is not None:
+                status = app._router.provider_status()
+        except Exception:
+            status = [(n, True, n == cur) for n in names]
+        if not status:
+            status = [(n, True, n == cur) for n in names]
+        for n, has_key, active in status:
+            mark = "→" if active else " "
+            key = "key ✓" if has_key else "no key"
+            lines.append(f"{mark} `{n}`  ({key})")
             lines.append("")
         lines.append("Switch: `/provider apifreellm` or `/provider groq`")
         lines.append("Keys: `FREECODE_API_KEY` · `GROQ_API_KEY`")
         return CommandResult(handled=True, message="\n".join(lines))
-    ok = app.set_provider_name(name)
+    want = name.strip().lower()
+    ok = app.set_provider_name(want)
     if not ok:
+        hint = ""
+        if want == "apifreellm":
+            hint = " Set `FREECODE_API_KEY` / `APIFREELLM_API_KEY`."
+        elif want == "groq":
+            hint = " Set `GROQ_API_KEY`."
         return CommandResult(
             handled=True,
-            message=f"Unknown provider `{name}`. Available: {', '.join(names)}",
+            message=(
+                f"Could not switch to `{want}`. "
+                f"Available with keys: {', '.join(names) or '(none)'}.{hint}"
+            ),
             error=True,
         )
-    return CommandResult(handled=True, message=f"Provider set to `{name}`")
+    note = ""
+    if want == "apifreellm":
+        note = (
+            "\n\nApiFreeLLM uses a **~20–25s cooldown** between requests "
+            "(community tier). The bar above the footer shows the timer after each reply. "
+            "Daily limit is ~50 req/key/24h — on that error use `/provider groq`."
+        )
+    elif want == "groq":
+        note = "\n\nGroq has **no** 20–25s floor; ready immediately after each reply."
+    return CommandResult(
+        handled=True,
+        message=f"**Provider set to `{want}`** (active now).{note}",
+    )
 
 
 def _cmd_theme(app: FreeCodeApp, name: str) -> CommandResult:
